@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+const { Hono } = require('hono');
 
 const app = new Hono();
 
@@ -10,4 +10,4 @@ app.get('/api/hello', (c) => {
   return c.json({ message: 'Hello from Hono API!' });
 });
 
-export default app;
+module.exports = app;

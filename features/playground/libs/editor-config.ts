@@ -280,10 +280,10 @@ export const defaultEditorOptions = {
   padding: { top: 16, bottom: 16 },
   
   // Line settings
-  lineNumbers: "on",
+  lineNumbers: "on" as const,
   lineHeight: 20,
-  renderLineHighlight: "all",
-  renderWhitespace: "selection",
+  renderLineHighlight: "all" as const,
+  renderWhitespace: "selection" as const,
   
   // Indentation
   tabSize: 2,
@@ -291,15 +291,15 @@ export const defaultEditorOptions = {
   detectIndentation: true,
   
   // Word wrapping
-  wordWrap: "on",
+  wordWrap: "on" as const,
   wordWrapColumn: 120,
-  wrappingIndent: "indent",
+  wrappingIndent: "indent" as const,
   
   // Code folding
   folding: true,
   foldingHighlight: true,
-  foldingStrategy: "indentation",
-  showFoldingControls: "mouseover",
+  foldingStrategy: "indentation" as const,
+  showFoldingControls: "mouseover" as const,
   
   // Scrolling
   smoothScrolling: true,
@@ -307,14 +307,14 @@ export const defaultEditorOptions = {
   fastScrollSensitivity: 5,
   
   // Selection
-  multiCursorModifier: "ctrlCmd",
+  multiCursorModifier: "ctrlCmd" as const,
   selectionHighlight: true,
   occurrencesHighlight: true,
   
   // Suggestions
   suggestOnTriggerCharacters: true,
-  acceptSuggestionOnEnter: "on",
-  tabCompletion: "on",
+  acceptSuggestionOnEnter: "on" as const,
+  tabCompletion: "on" as const,
   wordBasedSuggestions: true,
   quickSuggestions: {
     other: true,
@@ -327,7 +327,7 @@ export const defaultEditorOptions = {
   formatOnType: true,
   
   // Bracket matching
-  matchBrackets: "always",
+  matchBrackets: "always" as const,
   bracketPairColorization: {
     enabled: true
   },
@@ -342,19 +342,19 @@ export const defaultEditorOptions = {
   disableMonospaceOptimizations: false,
   
   // Accessibility
-  accessibilitySupport: "auto",
+  accessibilitySupport: "auto" as const,
   
   // Cursor
-  cursorBlinking: "smooth",
+  cursorBlinking: "smooth" as const,
   cursorSmoothCaretAnimation: true,
-  cursorStyle: "line",
+  cursorStyle: "line" as const,
   cursorWidth: 2,
   
   // Find
   find: {
     addExtraSpaceOnTop: false,
-    autoFindInSelection: "never",
-    seedSearchStringFromSelection: "always"
+    autoFindInSelection: "never" as const,
+    seedSearchStringFromSelection: "always" as const
   },
   
   // Hover

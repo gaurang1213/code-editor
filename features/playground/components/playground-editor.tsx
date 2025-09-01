@@ -307,48 +307,64 @@ export const PlaygroundEditor = ({
   }, [suggestion, suggestionPosition, activeFile, createInlineCompletionProvider])
 
   const handleEditorDidMount = (editor: any, monaco: Monaco) => {
+    // Safety check to ensure editor and monaco are properly initialized
+    if (!editor || !monaco) {
+      console.warn("Editor or Monaco not properly initialized")
+      return
+    }
+    
     editorRef.current = editor
     monacoRef.current = monaco
     console.log("Editor instance mounted:", !!editorRef.current)
 
-    editor.updateOptions({
-      ...defaultEditorOptions,
-      // Enable inline suggestions but with specific settings to prevent conflicts
-      inlineSuggest: {
-        enabled: true,
-        mode: "prefix",
-        suppressSuggestions: false,
-      },
-      // Disable some conflicting suggest features
-      suggest: {
-        preview: false, // Disable preview to avoid conflicts
-        showInlineDetails: false,
-        insertMode: "replace",
-      },
-      // Quick suggestions
-      quickSuggestions: {
-        other: true,
-        comments: false,
-        strings: false,
-      },
-      // Smooth cursor
-      cursorSmoothCaretAnimation: "on",
-    })
+    if (editor && typeof editor.updateOptions === 'function') {
+      editor.updateOptions({
+        ...defaultEditorOptions,
+        // Enable inline suggestions but with specific settings to prevent conflicts
+        inlineSuggest: {
+          enabled: true,
+          mode: "prefix",
+          suppressSuggestions: false,
+        },
+        // Disable some conflicting suggest features
+        suggest: {
+          preview: false, // Disable preview to avoid conflicts
+          showInlineDetails: false,
+          insertMode: "replace",
+        },
+        // Quick suggestions
+        quickSuggestions: {
+          other: true,
+          comments: false,
+          strings: false,
+        },
+        // Smooth cursor
+        cursorSmoothCaretAnimation: "on",
+      })
+    }
 
-    configureMonaco(monaco)
+    if (typeof configureMonaco === 'function') {
+      configureMonaco(monaco)
+    }
 
     // Keyboard shortcuts
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
-      console.log("Ctrl+Space pressed, triggering suggestion")
-      onTriggerSuggestion("completion", editor)
-    })
+    if (editor && typeof editor.addCommand === 'function') {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space, () => {
+        console.log("Ctrl+Space pressed, triggering suggestion")
+        if (typeof onTriggerSuggestion === 'function') {
+          onTriggerSuggestion("completion", editor)
+        }
+      })
+    }
 
     // CRITICAL: Override Tab key with high priority and prevent default Monaco behavior
-    if (tabCommandRef.current) {
+    if (tabCommandRef.current && typeof tabCommandRef.current.dispose === 'function') {
       tabCommandRef.current.dispose()
     }
 
-    tabCommandRef.current = editor.addCommand(
+    // Safety check before adding command
+    if (editor && typeof editor.addCommand === 'function') {
+      tabCommandRef.current = editor.addCommand(
       monaco.KeyCode.Tab,
       () => {
         console.log("TAB PRESSED", {
@@ -367,41 +383,57 @@ export const PlaygroundEditor = ({
         // CRITICAL: Block if just accepted
         if (suggestionAcceptedRef.current) {
           console.log("BLOCKED: Suggestion was just accepted, using default tab")
-          editor.trigger("keyboard", "tab", null)
+          if (editor && typeof editor.trigger === 'function') {
+            editor.trigger("keyboard", "tab", null)
+          }
           return
         }
 
         // If we have an active suggestion at the current position, try to accept it
-        if (currentSuggestionRef.current && hasActiveSuggestionAtPosition()) {
+        if (currentSuggestionRef.current && typeof hasActiveSuggestionAtPosition === 'function' && hasActiveSuggestionAtPosition()) {
           console.log("ATTEMPTING to accept suggestion with Tab")
-          const accepted = acceptCurrentSuggestion()
-          if (accepted) {
-            console.log("SUCCESS: Suggestion accepted via Tab, preventing default behavior")
-            return // CRITICAL: Return here to prevent default tab behavior
+          if (typeof acceptCurrentSuggestion === 'function') {
+            const accepted = acceptCurrentSuggestion()
+            if (accepted) {
+              console.log("SUCCESS: Suggestion accepted via Tab, preventing default behavior")
+              return // CRITICAL: Return here to prevent default tab behavior
+            }
+            console.log("FAILED: Suggestion acceptance failed, falling through to default")
           }
-          console.log("FAILED: Suggestion acceptance failed, falling through to default")
         }
 
         // Default tab behavior (indentation)
         console.log("DEFAULT: Using default tab behavior")
-        editor.trigger("keyboard", "tab", null)
+        if (editor && typeof editor.trigger === 'function') {
+          editor.trigger("keyboard", "tab", null)
+        }
       },
       // CRITICAL: Use specific context to override Monaco's built-in Tab handling
       "editorTextFocus && !editorReadonly && !suggestWidgetVisible",
     )
+    } else {
+      console.warn("Editor addCommand method not available")
+    }
 
     // Escape to reject
-    editor.addCommand(monaco.KeyCode.Escape, () => {
-      console.log("Escape pressed")
-      if (currentSuggestionRef.current) {
-        onRejectSuggestion(editor)
-        clearCurrentSuggestion()
-      }
-    })
+    if (editor && typeof editor.addCommand === 'function') {
+      editor.addCommand(monaco.KeyCode.Escape, () => {
+        console.log("Escape pressed")
+        if (currentSuggestionRef.current) {
+          if (typeof onRejectSuggestion === 'function') {
+            onRejectSuggestion(editor)
+          }
+          if (typeof clearCurrentSuggestion === 'function') {
+            clearCurrentSuggestion()
+          }
+        }
+      })
+    }
 
     // Listen for cursor position changes to hide suggestions when moving away
-    editor.onDidChangeCursorPosition((e: any) => {
-      if (isAcceptingSuggestionRef.current) return
+    if (editor && typeof editor.onDidChangeCursorPosition === 'function') {
+      editor.onDidChangeCursorPosition((e: any) => {
+        if (isAcceptingSuggestionRef.current) return
 
       const newPosition = e.position
 
@@ -416,8 +448,12 @@ export const PlaygroundEditor = ({
           newPosition.column > suggestionPos.column + 10
         ) {
           console.log("Cursor moved away from suggestion, clearing")
-          clearCurrentSuggestion()
-          onRejectSuggestion(editor)
+          if (typeof clearCurrentSuggestion === 'function') {
+            clearCurrentSuggestion()
+          }
+          if (typeof onRejectSuggestion === 'function') {
+            onRejectSuggestion(editor)
+          }
         }
       }
 
@@ -430,13 +466,17 @@ export const PlaygroundEditor = ({
 
         // Trigger suggestion with a delay
         suggestionTimeoutRef.current = setTimeout(() => {
-          onTriggerSuggestion("completion", editor)
+          if (editor && typeof onTriggerSuggestion === 'function') {
+            onTriggerSuggestion("completion", editor)
+          }
         }, 300)
       }
     })
+    }
 
     // Listen for content changes to detect manual typing over suggestions
-    editor.onDidChangeModelContent((e: any) => {
+    if (editor && typeof editor.onDidChangeModelContent === 'function') {
+      editor.onDidChangeModelContent((e: any) => {
       if (isAcceptingSuggestionRef.current) return
 
       // If user types while there's a suggestion, clear it (unless it's our insertion)
@@ -454,7 +494,9 @@ export const PlaygroundEditor = ({
 
         // User typed something else, clear the suggestion
         console.log("User typed while suggestion active, clearing")
-        clearCurrentSuggestion()
+        if (typeof clearCurrentSuggestion === 'function') {
+          clearCurrentSuggestion()
+        }
       }
 
       // Trigger context-aware suggestions on certain typing patterns
@@ -474,14 +516,19 @@ export const PlaygroundEditor = ({
         ) {
           setTimeout(() => {
             if (editorRef.current && !currentSuggestionRef.current && !suggestionLoading) {
-              onTriggerSuggestion("completion", editor)
+              if (editor && typeof onTriggerSuggestion === 'function') {
+                onTriggerSuggestion("completion", editor)
+              }
             }
           }, 100) // Small delay to let the change settle
         }
       }
     })
+    }
 
-    updateEditorLanguage()
+    if (typeof updateEditorLanguage === 'function') {
+      updateEditorLanguage()
+    }
   }
 
   const updateEditorLanguage = () => {
@@ -511,7 +558,7 @@ export const PlaygroundEditor = ({
         inlineCompletionProviderRef.current.dispose()
         inlineCompletionProviderRef.current = null
       }
-      if (tabCommandRef.current) {
+      if (tabCommandRef.current && typeof tabCommandRef.current.dispose === 'function') {
         tabCommandRef.current.dispose()
         tabCommandRef.current = null
       }
