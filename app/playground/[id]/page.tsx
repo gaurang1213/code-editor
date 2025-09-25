@@ -40,10 +40,8 @@ import {
 import WebContainerPreview from "@/features/webcontainers/components/webcontainer-preveiw";
 import LoadingStep from "@/components/ui/loader";
 import { PlaygroundEditor } from "@/features/playground/components/playground-editor";
-import ToggleAI from "@/features/playground/components/toggle-ai";
 import { useFileExplorer } from "@/features/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/features/playground/hooks/usePlayground";
-import { useAISuggestions } from "@/features/playground/hooks/useAISuggestion";
 import { useWebContainer } from "@/features/webcontainers/hooks/useWebContainer";
 import { SaveUpdatedCode } from "@/features/playground/actions";
 import { TemplateFolder } from "@/features/playground/types";
@@ -67,7 +65,6 @@ const MainPlaygroundPage: React.FC = () => {
   // Custom hooks
   const { playgroundData, templateData, isLoading, error, saveTemplateData } =
     usePlayground(id);
-  const aiSuggestions = useAISuggestions();
   const {
     activeFileId,
     closeAllFiles,
@@ -209,7 +206,7 @@ const MainPlaygroundPage: React.FC = () => {
         const updatedTemplateData = JSON.parse(
           JSON.stringify(latestTemplateData)
         );
-        const updateFileContent = (items: any[]) =>
+        const updateFileContent = (items: any[]): any[] =>
           items.map((item) => {
             if ("folderName" in item) {
               return { ...item, items: updateFileContent(item.items) };
@@ -235,8 +232,8 @@ const MainPlaygroundPage: React.FC = () => {
         }
 
         // Use saveTemplateData to persist changes
-        const newTemplateData = await saveTemplateData(updatedTemplateData);
-        setTemplateData(newTemplateData || updatedTemplateData);
+        await saveTemplateData(updatedTemplateData);
+        setTemplateData(updatedTemplateData);
 
         // Update open files
         const updatedOpenFiles = openFiles.map((f) =>
@@ -419,11 +416,6 @@ const MainPlaygroundPage: React.FC = () => {
                   <TooltipContent>Save All (Ctrl+Shift+S)</TooltipContent>
                 </Tooltip>
 
-                <ToggleAI
-                  isEnabled={aiSuggestions.isEnabled}
-                  onToggle={aiSuggestions.toggleEnabled}
-                  suggestionLoading={aiSuggestions.isLoading}
-                />
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -512,18 +504,6 @@ const MainPlaygroundPage: React.FC = () => {
                         content={activeFile?.content || ""}
                         onContentChange={(value) =>
                           activeFileId && updateFileContent(activeFileId, value)
-                        }
-                        suggestion={aiSuggestions.suggestion}
-                        suggestionLoading={aiSuggestions.isLoading}
-                        suggestionPosition={aiSuggestions.position}
-                        onAcceptSuggestion={(editor, monaco) =>
-                          aiSuggestions.acceptSuggestion(editor, monaco)
-                        }
-                        onRejectSuggestion={(editor) =>
-                          aiSuggestions.rejectSuggestion(editor)
-                        }
-                        onTriggerSuggestion={(type, editor) =>
-                          aiSuggestions.fetchSuggestion(type, editor)
                         }
                       />
                     </ResizablePanel>

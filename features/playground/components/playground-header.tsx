@@ -20,8 +20,6 @@ export function PlaygroundHeader() {
     openFiles,
     handleSave,
     handleSaveAll,
-    isAISuggestionsEnabled,
-    setIsAISuggestionsEnabled,
     setIsPreviewVisible,
     setIsTerminalVisible,
     isPreviewVisible,
@@ -71,10 +69,6 @@ export function PlaygroundHeader() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsTerminalVisible(!isTerminalVisible)}>
                 {isTerminalVisible ? "Hide" : "Show"} Terminal
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setIsAISuggestionsEnabled(!isAISuggestionsEnabled)}>
-                {isAISuggestionsEnabled ? "Disable" : "Enable"} AI Suggestions
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

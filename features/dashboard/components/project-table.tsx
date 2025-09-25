@@ -175,7 +175,7 @@ export default function ProjectTable({
 
   return (
     <>
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-hidden w-250" >
         <Table>
           <TableHeader>
             <TableRow>

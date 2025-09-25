@@ -33,12 +33,12 @@ export function Header() {
                     href="/"
                     className="flex items-center gap-2 justify-center"
                   >
-                    <Image
+                    {/* <Image
                       src={"/logo.svg"}
                       alt="Logo"
                       height={60}
                       width={60}
-                    />
+                    /> */}
 
                     <span className="hidden sm:block font-extrabold text-lg">
                       VibeCode Editor

@@ -29,8 +29,6 @@ model User {
 
   myPlayground StarMark[]
 
-  chatMessages ChatMessage[] // New relation for chat messages
-
   staredPlayground Playground[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -69,7 +67,7 @@ model Playground {
   id            String         @id @default(cuid()) @map("_id")
   title         String
   description   String?
-  template      Templates      @default(REACT)
+  template      Templates      @default(EXPRESS)
   templateFiles TemplateFile[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -99,15 +97,3 @@ model TemplateFile {
   playground   Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
 }
 
-// New model for AI chat messages
-model ChatMessage {
-  id        String   @id @default(cuid()) @map("_id")
-  userId    String
-  role      String // "user" or "assistant"
-  content   String
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
