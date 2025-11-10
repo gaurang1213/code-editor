@@ -22,6 +22,14 @@ const mockPlaygrounds: Playground[] = [
   },
 ];
 
+type StarMark = {
+  userId: string;
+  playgroundId: string;
+  isMarked: boolean;
+};
+
+const mockStarMarks: StarMark[] = [];
+
 const mockTemplateFiles: TemplateFile[] = [
   {
     id: 'mock-template-1',
@@ -71,7 +79,23 @@ export const mockDb = {
     findUnique: async ({ where }: { where: { id: string } }) => {
       return mockPlaygrounds.find(p => p.id === where.id) || null;
     },
-    findMany: async () => mockPlaygrounds,
+    findMany: async (args?: any) => {
+      const whereUserId: string | undefined = args?.where?.userId;
+      const list = whereUserId ? mockPlaygrounds.filter(p => p.userId === whereUserId) : mockPlaygrounds.slice();
+      // Attach Starmark array if requested to mimic include
+      if (args?.include?.Starmark) {
+        const userId = args.include.Starmark.where?.userId as string | undefined;
+        return list.map(p => ({
+          ...p,
+          Starmark: userId
+            ? mockStarMarks
+                .filter(s => s.playgroundId === p.id && s.userId === userId)
+                .map(s => ({ isMarked: s.isMarked }))
+            : [],
+        }));
+      }
+      return list;
+    },
     create: async (data: any) => {
       const newPlayground = {
         ...data.data,
@@ -116,11 +140,45 @@ export const mockDb = {
     update: async ({ where, data }: { where: { playgroundId: string }, data: any }) => {
       const index = mockTemplateFiles.findIndex(t => t.playgroundId === where.playgroundId);
       if (index !== -1) {
-        mockTemplateFiles[index] = { ...mockTemplateFiles[index], ...data, updatedAt: new Date() };
+        mockTemplateFiles[index] = { ...mockTemplateFiles[index], ...data, updatedAt: new Date() } as any;
         return mockTemplateFiles[index];
       }
       return null;
+    },
+    upsert: async ({ where, update, create }: { where: { playgroundId: string }, update: any, create: any }) => {
+      const existing = mockTemplateFiles.find(t => t.playgroundId === where.playgroundId);
+      if (existing) {
+        const updated = { ...existing, ...update, updatedAt: new Date() } as any;
+        const idx = mockTemplateFiles.findIndex(t => t.id === existing.id);
+        mockTemplateFiles[idx] = updated;
+        return updated;
+      }
+      const newItem = {
+        id: `mock-template-${Date.now()}`,
+        playgroundId: create.playgroundId,
+        content: create.content,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any;
+      mockTemplateFiles.push(newItem);
+      return newItem;
     }
+  },
+  starMark: {
+    create: async ({ data }: { data: StarMark }) => {
+      const exists = mockStarMarks.find(s => s.userId === data.userId && s.playgroundId === data.playgroundId);
+      if (!exists) mockStarMarks.push({ ...data });
+      return data;
+    },
+    delete: async ({ where }: { where: { userId_playgroundId: { userId: string; playgroundId: string } } }) => {
+      const { userId, playgroundId } = where.userId_playgroundId;
+      const idx = mockStarMarks.findIndex(s => s.userId === userId && s.playgroundId === playgroundId);
+      if (idx !== -1) {
+        const [removed] = mockStarMarks.splice(idx, 1);
+        return removed;
+      }
+      return null as any;
+    },
   },
   user: {
     findUnique: async ({ where }: { where: { email: string } }) => {

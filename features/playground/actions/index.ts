@@ -70,16 +70,15 @@ export const createPlayground = async (data:{
 export const getAllPlaygroundForUser = async ()=>{
     const user = await currentUser();
     try {
-        const user  = await currentUser();
+        if (!user?.id) return [];
         const playground = await db.playground.findMany({
             where:{
-                userId:user?.id!
+                userId:user.id
             },
             include:{
-                user:true,
                 Starmark:{
                     where:{
-                        userId:user?.id!
+                        userId:user.id
                     },
                     select:{
                         isMarked:true
@@ -87,8 +86,20 @@ export const getAllPlaygroundForUser = async ()=>{
                 }
             }
         })
-      
-        return playground;
+
+        // Attach the current user object to each playground to satisfy UI expectations
+        // without relying on a failing relation include.
+        // @ts-ignore
+        return playground.map((p:any) => ({
+          ...p,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+            role: user.role,
+          },
+        }));
     } catch (error) {
         console.log(error)
     }

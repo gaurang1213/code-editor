@@ -5,7 +5,12 @@ import type { TemplateFolder } from "@/features/playground/libs/path-to-json";
 import { transformToWebContainerFormat } from "../hooks/transformer";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import TerminalComponent from "./terminal";
+import dynamic from "next/dynamic";
+
+const TerminalComponent = dynamic(() => import("./terminal"), {
+  ssr: false,
+  loading: () => <div className="h-32 bg-muted animate-pulse rounded" />
+});
 import { WebContainer } from "@webcontainer/api";
 
 interface WebContainerPreviewProps {
@@ -43,6 +48,71 @@ const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
   
   // Ref to access terminal methods
   const terminalRef = useRef<any>(null);
+  const serverReadyRef = useRef(false);
+  const startingRef = useRef(false);
+
+  // Start server inside WebContainer with auto-detected package manager and scripts
+  const startServer = async (instance: WebContainer, pmGuess?: 'npm' | 'pnpm' | 'yarn') => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    serverReadyRef.current = false;
+
+    if (terminalRef.current?.writeToTerminal) {
+      terminalRef.current.writeToTerminal("🚀 Starting development server...\r\n");
+    }
+
+    // Detect package manager if not provided
+    let pm: 'npm' | 'pnpm' | 'yarn' = pmGuess || 'npm';
+    if (!pmGuess) {
+      const hasYarn = await instance.fs.readFile('yarn.lock').then(() => true).catch(() => false);
+      const hasPnpm = await instance.fs.readFile('pnpm-lock.yaml').then(() => true).catch(() => false);
+      if (hasPnpm) pm = 'pnpm'; else if (hasYarn) pm = 'yarn';
+    }
+
+    // Read package.json to choose script
+    let scripts: Record<string, string> | undefined;
+    try {
+      const pkgRaw = await instance.fs.readFile('package.json');
+      const pkg = JSON.parse(new TextDecoder().decode(pkgRaw));
+      scripts = pkg?.scripts || {};
+    } catch {
+      // No package.json
+    }
+
+    if (!scripts || (!scripts['dev'] && !scripts['start'])) {
+      if (terminalRef.current?.writeToTerminal) {
+        terminalRef.current.writeToTerminal("⚠️ No dev/start script found in package.json.\r\n");
+      }
+      startingRef.current = false;
+      return;
+    }
+
+    const args = scripts['dev'] ? ['run', 'dev'] : ['run', 'start'];
+    const proc = await instance.spawn(pm, args);
+
+    // Stream output
+    proc.output.pipeTo(new WritableStream({
+      write: (data) => {
+        if (terminalRef.current?.writeToTerminal) {
+          terminalRef.current.writeToTerminal(data);
+        }
+      },
+    }));
+
+    // Resolve on server-ready
+    instance.on('server-ready', (port: number, url: string) => {
+      if (serverReadyRef.current) return;
+      serverReadyRef.current = true;
+      if (terminalRef.current?.writeToTerminal) {
+        terminalRef.current.writeToTerminal(`🌐 Server ready at ${url}\r\n`);
+      }
+      setPreviewUrl(url);
+      setLoadingState((prev) => ({ ...prev, starting: false, ready: true }));
+      setIsSetupComplete(true);
+      setIsSetupInProgress(false);
+      startingRef.current = false;
+    });
+  };
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
@@ -72,8 +142,8 @@ const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
         
         // Check if server is already running by testing if files are already mounted
         try {
-          const packageJsonExists = await instance.fs.readFile('package.json', 'utf8');
-          if (packageJsonExists) {
+          const pkgBuf = await instance.fs.readFile('package.json').catch(() => null as any);
+          if (pkgBuf) {
             // Files are already mounted, just reconnect to existing server
             if (terminalRef.current?.writeToTerminal) {
               terminalRef.current.writeToTerminal("🔄 Reconnecting to existing WebContainer session...\r\n");
@@ -93,10 +163,19 @@ const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
               }));
               setIsSetupComplete(true);
               setIsSetupInProgress(false);
+              serverReadyRef.current = true;
             });
             
             setCurrentStep(4);
             setLoadingState((prev) => ({ ...prev, starting: true }));
+            // Fallback: if server-ready doesn't fire in time, start the server
+            setTimeout(async () => {
+              if (!serverReadyRef.current && !startingRef.current) {
+                try {
+                  await startServer(instance);
+                } catch {}
+              }
+            }, 3000);
             return;
           }
         } catch (e) {
@@ -145,7 +224,14 @@ const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
           terminalRef.current.writeToTerminal("📦 Installing dependencies...\r\n");
         }
         
-        const installProcess = await instance.spawn("npm", ["install"]);
+        // Choose package manager based on lockfiles (npm default)
+        let pm: 'npm' | 'pnpm' | 'yarn' = 'npm';
+        const hasYarn = await instance.fs.readFile('yarn.lock').then(() => true).catch(() => false);
+        const hasPnpm = await instance.fs.readFile('pnpm-lock.yaml').then(() => true).catch(() => false);
+        if (hasPnpm) pm = 'pnpm'; else if (hasYarn) pm = 'yarn';
+
+        const installArgs = pm === 'npm' ? ['install'] : pm === 'pnpm' ? ['install'] : [];
+        const installProcess = await instance.spawn(pm, installArgs);
 
         // Stream install output to terminal
         installProcess.output.pipeTo(
@@ -176,39 +262,7 @@ const WebContainerPreview: React.FC<WebContainerPreviewProps> = ({
         }));
         setCurrentStep(4);
 
-        // Step 4: Start the server
-        if (terminalRef.current?.writeToTerminal) {
-          terminalRef.current.writeToTerminal("🚀 Starting development server...\r\n");
-        }
-        
-        const startProcess = await instance.spawn("npm", ["run", "start"]);
-
-        // Listen for server ready event
-        instance.on("server-ready", (port: number, url: string) => {
-          console.log(`Server ready on port ${port} at ${url}`);
-          if (terminalRef.current?.writeToTerminal) {
-            terminalRef.current.writeToTerminal(`🌐 Server ready at ${url}\r\n`);
-          }
-          setPreviewUrl(url);
-          setLoadingState((prev) => ({
-            ...prev,
-            starting: false,
-            ready: true,
-          }));
-          setIsSetupComplete(true);
-          setIsSetupInProgress(false);
-        });
-
-        // Handle start process output - stream to terminal
-        startProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              if (terminalRef.current?.writeToTerminal) {
-                terminalRef.current.writeToTerminal(data);
-              }
-            },
-          })
-        );
+        await startServer(instance, pm);
 
       } catch (err) {
         console.error("Error setting up container:", err);

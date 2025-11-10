@@ -41,6 +41,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --bg-pattern: url("/background.jpg");
 }
 
 :root {
@@ -120,6 +121,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  .pattern {
+    background-image: url('/background.jpg');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed; 
+   }
+} 
+
+
 
 
 .ghost-text{

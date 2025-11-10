@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+// Note: using 'any' to allow experimental flags not present in local types
+const nextConfig: any = {
   images: {
     remotePatterns: [
       {
@@ -11,6 +10,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Note: allowedDevOrigins is a future Next.js option; remove to avoid warnings in current version
   async headers() {
     return [
       {
@@ -33,4 +33,4 @@ const nextConfig: NextConfig = {
   
 };
 
-export default nextConfig;
+export default nextConfig as any;

@@ -4,6 +4,7 @@ import { TemplateFolder } from '@/features/playground/libs/path-to-json';
 
 interface UseWebContainerProps {
   templateData: TemplateFolder;
+  resetKey?: string; // changing this will teardown and re-boot the container
 }
 
 interface UseWebContainerReturn {
@@ -15,7 +16,29 @@ interface UseWebContainerReturn {
   destroy: () => void; // Added destroy function
 }
 
-export const useWebContainer = ({ templateData }: UseWebContainerProps): UseWebContainerReturn => {
+// Module-scoped singleton to satisfy WebContainer's single-instance restriction
+let bootPromise: Promise<WebContainer> | null = null;
+let singleton: WebContainer | null = null;
+
+async function bootSingleton(): Promise<WebContainer> {
+  if (singleton) return singleton;
+  if (!bootPromise) {
+    bootPromise = WebContainer.boot();
+  }
+  singleton = await bootPromise;
+  return singleton;
+}
+
+async function resetSingleton(): Promise<void> {
+  if (singleton) {
+    try { await singleton.teardown(); } catch {}
+  }
+  singleton = null;
+  bootPromise = null;
+}
+
+export const useWebContainer = ({ templateData, resetKey }: UseWebContainerProps): UseWebContainerReturn => {
+
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +49,12 @@ export const useWebContainer = ({ templateData }: UseWebContainerProps): UseWebC
 
     async function initializeWebContainer() {
       try {
-        const webcontainerInstance = await WebContainer.boot();
-        
+        setIsLoading(true);
+        setError(null);
+        // Explicitly reset previous singleton before booting new instance
+        await resetSingleton();
+        const webcontainerInstance = await bootSingleton();
         if (!mounted) return;
-        
         setInstance(webcontainerInstance);
         setIsLoading(false);
       } catch (err) {
@@ -45,11 +70,10 @@ export const useWebContainer = ({ templateData }: UseWebContainerProps): UseWebC
 
     return () => {
       mounted = false;
-      if (instance) {
-        instance.teardown();
-      }
+      // Do not teardown here to avoid flapping across re-mounts; reset happens on next initialize
     };
-  }, []);
+  // Re-run when resetKey changes to reboot container for a new playground
+  }, [resetKey]);
 
   const writeFileSync = useCallback(async (path: string, content: string): Promise<void> => {
     if (!instance) {

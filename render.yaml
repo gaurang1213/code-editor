@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: code-editor-collab
+    env: node
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    startCommand: node server.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_TRUST_HOST
+        value: "true"
+      # Set these in Render dashboard or here before deploying
+      - key: NEXTAUTH_URL
+        value: https://REPLACE_WITH_RENDER_URL
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: SNAPSHOT_DIR
+        value: /data/collab-snapshots
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
