@@ -18,7 +18,3 @@ services:
         generateValue: true
       - key: SNAPSHOT_DIR
         value: /data/collab-snapshots
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
