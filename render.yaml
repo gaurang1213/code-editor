@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: code-editor-collab
+    name: RealIDE
     env: node
     autoDeploy: true
     buildCommand: npm ci && npm run build
