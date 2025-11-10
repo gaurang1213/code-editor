@@ -17,4 +17,4 @@ services:
       - key: NEXTAUTH_SECRET
         generateValue: true
       - key: SNAPSHOT_DIR
-        value: /data/collab-snapshots
+        value: /tmp/collab-snapshots
