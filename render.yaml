@@ -11,9 +11,6 @@ services:
         value: production
       - key: AUTH_TRUST_HOST
         value: "true"
-      # Set these in Render dashboard or here before deploying
-      - key: NEXTAUTH_URL
-        value: https://REPLACE_WITH_RENDER_URL
       - key: NEXTAUTH_SECRET
         generateValue: true
       - key: SNAPSHOT_DIR
