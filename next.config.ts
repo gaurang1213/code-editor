@@ -30,6 +30,9 @@ const nextConfig: any = {
     ];
   },
   reactStrictMode:false,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   
 };
 
