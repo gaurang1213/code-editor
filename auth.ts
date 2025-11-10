@@ -8,6 +8,8 @@ import { getAccountByUserId, getUserById } from "@/features/auth/actions";
  
 
  
+const hasPrisma = typeof (db as any)?.$transaction === 'function'
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   callbacks: {
     /**
@@ -21,60 +23,64 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         where: { email: user.email! },
       });
 
-      // If user does not exist, create a new one
+      // If user does not exist, create a new one (when using Prisma). If running with mock DB, skip.
       if (!existingUser) {
-        const newUser = await db.user.create({
-          data: {
-            email: user.email!,
-            name: user.name,
-            image: user.image,
-           
-            accounts: {
-              // @ts-ignore
-              create: {
-                type: account.type,
-                provider: account.provider,
-                providerAccountId: account.providerAccountId,
-                refreshToken: account.refresh_token,
-                accessToken: account.access_token,
-                expiresAt: account.expires_at,
-                tokenType: account.token_type,
-                scope: account.scope,
-                idToken: account.id_token,
-                sessionState: account.session_state,
+        const userDelegate: any = (db as any)?.user;
+        if (userDelegate?.create) {
+          const newUser = await userDelegate.create({
+            data: {
+              email: user.email!,
+              name: user.name,
+              image: user.image,
+              accounts: {
+                create: {
+                  type: account.type,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                  refreshToken: (account as any).refresh_token,
+                  accessToken: (account as any).access_token,
+                  expiresAt: (account as any).expires_at,
+                  tokenType: (account as any).token_type,
+                  scope: (account as any).scope,
+                  idToken: (account as any).id_token,
+                  sessionState: (account as any).session_state,
+                },
               },
             },
-          },
-        });
-
-        if (!newUser) return false; // Return false if user creation fails
+          });
+          if (!newUser) return false; // In case adapter create fails
+        }
+        // When on mock DB, there is no persistent write; allow sign-in to proceed
       } else {
-        // Link the account if user exists
-        const existingAccount = await db.account.findUnique({
-          where: {
-            provider_providerAccountId: {
-              provider: account.provider,
-              providerAccountId: account.providerAccountId,
+        // Link the account if user exists (only when Prisma account delegate is available)
+        const accountDelegate: any = (db as any)?.account;
+        let existingAccount: any = null;
+        if (accountDelegate?.findUnique) {
+          existingAccount = await accountDelegate.findUnique({
+            where: {
+              provider_providerAccountId: {
+                provider: account.provider,
+                providerAccountId: account.providerAccountId,
+              },
             },
-          },
-        });
+          });
+        }
 
-        // If the account does not exist, create it
-        if (!existingAccount) {
-          await db.account.create({
+        // If the account does not exist, create it (when supported)
+        if (!existingAccount && accountDelegate?.create) {
+          await accountDelegate.create({
             data: {
-              userId: existingUser.id,
+              userId: (existingUser as any).id,
               type: account.type,
               provider: account.provider,
               providerAccountId: account.providerAccountId,
-              refreshToken: account.refresh_token,
-              accessToken: account.access_token,
-              expiresAt: account.expires_at,
-              tokenType: account.token_type,
-              scope: account.scope,
-              idToken: account.id_token,
-              // @ts-ignore
-              sessionState: account.session_state,
+              refreshToken: (account as any).refresh_token,
+              accessToken: (account as any).access_token,
+              expiresAt: (account as any).expires_at,
+              tokenType: (account as any).token_type,
+              scope: (account as any).scope,
+              idToken: (account as any).id_token,
+              sessionState: (account as any).session_state,
             },
           });
         }
@@ -113,7 +119,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
   },
   
   secret: process.env.AUTH_SECRET,
-  adapter: PrismaAdapter(db),
+  adapter: hasPrisma ? (PrismaAdapter as any)(db as any) : undefined,
   session: { strategy: "jwt" },
   ...authConfig,
 })
