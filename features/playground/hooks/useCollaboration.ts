@@ -260,11 +260,13 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
         } else if (action === "content-change") {
           metricsRef.current.changeCount += 1;
           const { fileId, content } = payload || {};
-          contentChangeHandlers.current.forEach((h) => h({ fileId, content }));
+          const tsPayload = payload?.ts as number | undefined;
+          contentChangeHandlers.current.forEach((h) => h({ fileId, content, ts: tsPayload }));
         } else if (action === "saved") {
           metricsRef.current.savedCount += 1;
           const { fileId, content } = payload || {};
-          savedHandlers.current.forEach((h) => h({ fileId, content }));
+          const tsPayload = payload?.ts as number | undefined;
+          savedHandlers.current.forEach((h) => h({ fileId, content, ts: tsPayload }));
         } else if (action === "file-op") {
           metricsRef.current.fileOpCount += 1;
           fileOpHandlers.current.forEach((h) => h(payload));
