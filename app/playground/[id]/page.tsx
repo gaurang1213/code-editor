@@ -133,12 +133,38 @@ const MainPlaygroundPage: React.FC = () => {
     }
   }, [templateData, setTemplateData]);
 
+  // When the template tree in the store updates, refresh the active file's content
+  // from the latest template if there are no unsaved changes in the tab.
+  React.useEffect(() => {
+    if (!templateDataStore || !activeFileId) return;
+    const active = openFiles.find(f => f.id === activeFileId);
+    if (!active || active.hasUnsavedChanges) return;
+    try {
+      const parts = activeFileId.split('/').filter(Boolean);
+      const fname = parts.pop() || "";
+      const [name, ...extParts] = fname.split('.');
+      const ext = extParts.join('.');
+      let folder = templateDataStore as any;
+      for (const p of parts) {
+        const f = folder.items.find((it: any) => 'folderName' in it && it.folderName === p) as any;
+        if (!f) { folder = templateDataStore; break; }
+        folder = f;
+      }
+      const match = folder.items.find((it: any) => 'filename' in it && it.filename === name && it.fileExtension === ext) as any;
+      if (match && typeof match.content === 'string' && match.content !== active.content) {
+        updateFileContent(activeFileId, match.content);
+        markFileSaved(activeFileId, match.content);
+      }
+    } catch {}
+  }, [templateDataStore, activeFileId, openFiles, updateFileContent, markFileSaved]);
+
   // Always fetch the latest content for the active file from the server snapshot
   React.useEffect(() => {
-    if (activeFileId) {
+    // Only request from server if there are peers; otherwise prefer our saved DB/template state
+    if (activeFileId && clients.length > 1) {
       requestFile(activeFileId);
     }
-  }, [activeFileId, requestFile]);
+  }, [activeFileId, clients.length, requestFile]);
 
   // Apply incoming remote content changes
   React.useEffect(() => {

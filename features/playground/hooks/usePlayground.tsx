@@ -39,9 +39,20 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
       const rawContent = data?.templateFiles?.[0]?.content;
       if (typeof rawContent === "string") {
         const parsedContent = JSON.parse(rawContent);
-        setTemplateData(parsedContent);
-        toast.success("Playground loaded successfully");
-        return;
+        const normalized = Array.isArray(parsedContent)
+          ? { folderName: "Root", items: parsedContent }
+          : (parsedContent && typeof parsedContent === 'object')
+            ? parsedContent
+            : { folderName: "Root", items: [] };
+
+        // If saved snapshot appears empty, fall back to base template API
+        const hasItems = Array.isArray((normalized as any).items) && (normalized as any).items.length > 0;
+        if (hasItems) {
+          setTemplateData(normalized);
+          toast.success("Playground loaded successfully");
+          return;
+        }
+        // else continue to API fetch below
       }
 
       // Load template from API if not in saved content
