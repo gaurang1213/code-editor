@@ -116,10 +116,25 @@ const MainPlaygroundPage: React.FC = () => {
         if (!f) { folder = templateDataStore; break; }
         folder = f;
       }
+
       const match = folder.items.find((it: any) => 'filename' in it && it.filename === name && it.fileExtension === ext) as any;
       if (match && typeof match.content === 'string') return match.content as string;
     } catch {}
     return undefined;
+  }
+
+  // Normalize file IDs to avoid duplicates like "name.ext/name.ext"
+  function normalizeFileId(id: string | undefined | null): string {
+    if (!id) return '';
+    const parts = id.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const prev = parts[parts.length - 2];
+      if (last && prev && last === prev) {
+        parts.splice(parts.length - 2, 1);
+      }
+    }
+    return parts.join('/');
   }
 
   // Collaboration
@@ -184,60 +199,74 @@ const MainPlaygroundPage: React.FC = () => {
   // Apply incoming remote content changes
   React.useEffect(() => {
     return onRemoteContentChange(async ({ fileId, content, ts }) => {
-      const targetFile = openFiles.find((f) => f.id === fileId);
+      const normId = normalizeFileId(fileId);
+      const targetFile = openFiles.find((f) => f.id === normId);
       // Ignore if stale timestamp compared to what we've already applied
-      const lastTs = lastRemoteTsRef.current.get(fileId || "") || 0;
+      const lastTs = lastRemoteTsRef.current.get(normId || "") || 0;
       const incomingTs = typeof ts === 'number' ? ts : 0;
-      if (incomingTs && incomingTs < lastTs) return;
+      if (incomingTs && incomingTs < lastTs) {
+        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-stale', fileId: normId, incomingTs, lastTs })); } catch {}
+        return;
+      }
       // If a remote save was applied, suppress any content-change at or before that save
-      const savedTs = lastSavedTsRef.current.get(fileId || "") || 0;
-      if (savedTs && incomingTs && incomingTs <= savedTs) return;
+      const savedTs = lastSavedTsRef.current.get(normId || "") || 0;
+      if (savedTs && incomingTs && incomingTs <= savedTs) {
+        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-pre-saved', fileId: normId, incomingTs, savedTs })); } catch {}
+        return;
+      }
 
       // Prevent empty payload from wiping local non-empty content on join/sync
-      const existing = targetFile?.content ?? getTemplateContentById(fileId || "") ?? "";
+      const existing = targetFile?.content ?? getTemplateContentById(normId || "") ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
+        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-empty', fileId: normId, existingLen: existing.length })); } catch {}
         return;
       }
 
       // Ignore no-op content
       if ((content ?? "") === existing) {
-        if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
+        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-noop', fileId: normId, len: (content||'').length })); } catch {}
+        if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
         return;
       }
 
       if (targetFile) {
-        updateFileContent(fileId, content || "");
+        try { console.log('[collab]', JSON.stringify({ event: 'apply-change', fileId: normId, len: (content||'').length })); } catch {}
+        updateFileContent(normId, content || "");
       } else {
-        updateFileContent(fileId, content || "");
+        try { console.log('[collab]', JSON.stringify({ event: 'apply-change-open-late', fileId: normId, len: (content||'').length })); } catch {}
+        updateFileContent(normId, content || "");
       }
-      if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
+      if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
     });
   }, [onRemoteContentChange, updateFileContent, openFiles]);
 
   // Apply incoming remote save events to update content, clear unsaved badge, and sync template
   React.useEffect(() => {
     return onRemoteSaved(async ({ fileId, content, ts }) => {
-      if (!fileId) return;
+      const normId = normalizeFileId(fileId);
+      if (!normId) return;
       // Treat remote 'saved' as authoritative: apply if non-empty; if empty, don't clobber non-empty local
-      const existing = getTemplateContentById(fileId || "") ?? "";
+      const existing = getTemplateContentById(normId || "") ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
+        try { console.log('[collab]', JSON.stringify({ event: 'ignore-saved-empty', fileId: normId, existingLen: existing.length })); } catch {}
         return;
       }
       // Update template store first so any effects depending on it read fresh data
-      updateTemplateFileContent(fileId, content || "");
-      updateFileContent(fileId, content || "");
-      markFileSaved(fileId, content || "");
+      try { console.log('[collab]', JSON.stringify({ event: 'apply-saved', fileId: normId, len: (content||'').length })); } catch {}
+      updateTemplateFileContent(normId, content || "");
+      updateFileContent(normId, content || "");
+      markFileSaved(normId, content || "");
       // Track ts for completeness but do not block application on ts
       const incomingTs = typeof ts === 'number' ? ts : 0;
-      if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
-      if (incomingTs) lastSavedTsRef.current.set(fileId || "", incomingTs);
+      if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
+      if (incomingTs) lastSavedTsRef.current.set(normId || "", incomingTs);
 
       // Also reflect remote saves into local WebContainer FS so preview stays in sync
       try {
         const latestTemplateData = useFileExplorer.getState().templateData;
         if (latestTemplateData && writeFileSync) {
-          const mockFile = { id: fileId } as any;
-          const filePath = findFilePath(mockFile as any, latestTemplateData) || fileId; // fallback to id path
+          const mockFile = { id: normId } as any;
+          const filePath = findFilePath(mockFile as any, latestTemplateData) || normId; // fallback to id path
           await writeFileSync(filePath, content || "");
           if (instance && instance.fs) {
             await instance.fs.writeFile(filePath, content || "");
@@ -444,7 +473,7 @@ const MainPlaygroundPage: React.FC = () => {
 
   const handleSave = useCallback(
     async (fileId?: string) => {
-      const targetFileId = fileId || activeFileId;
+      const targetFileId = normalizeFileId(fileId || activeFileId);
       if (!targetFileId) return;
 
       const fileToSave = openFiles.find((f) => f.id === targetFileId);
@@ -513,7 +542,7 @@ const MainPlaygroundPage: React.FC = () => {
 
         // Broadcast only the saved snapshot to other users (with content)
         console.log("Broadcasting saved content:", { fileId: targetFileId, content: fileToSave.content?.substring(0, 50) + "..." });
-        broadcastSaved({ fileId: targetFileId, content: fileToSave.content });
+        broadcastSaved({ fileId: normalizeFileId(targetFileId), content: fileToSave.content });
 
         toast.success(
           `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`
@@ -789,8 +818,9 @@ const MainPlaygroundPage: React.FC = () => {
                         content={activeFile?.content || ""}
                         onContentChange={(value) => {
                           if (activeFileId) {
-                            updateFileContent(activeFileId, value);
-                            broadcastContentChange({ fileId: activeFileId, content: value });
+                            const fid = normalizeFileId(activeFileId);
+                            updateFileContent(fid, value);
+                            broadcastContentChange({ fileId: fid, content: value });
                           }
                         }}
                       />
