@@ -29,6 +29,7 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
   const reconnectAttemptsRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const lastSentContentRef = useRef<Record<string, string>>({});
   const leavingRef = useRef(false);
 
   // ---- Debug metrics (opt-in) ----
@@ -330,10 +331,16 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
       if (!playgroundId) return;
       const key = payload.fileId || "__all__";
       if (debounceTimersRef.current[key]) clearTimeout(debounceTimersRef.current[key]);
-      const delay = ((): number => {
-        // Per-character measurements when debug is enabled
-        try { return (localStorage.getItem('COLLAB_DEBUG') === '1') ? 0 : 80; } catch { return 80; }
+      const delay = (() : number => {
+        try { return (localStorage.getItem('COLLAB_DEBUG') === '1') ? 0 : 30; } catch { return 30; }
       })();
+      // Dedupe identical payloads
+      try {
+        const last = lastSentContentRef.current[key];
+        if (last === (payload.content || '')) {
+          return;
+        }
+      } catch {}
       debounceTimersRef.current[key] = setTimeout(() => {
         const msg = { action: "content-change", payload: { roomId: playgroundId, fileId: payload.fileId, content: payload.content, filePath: payload.filePath } };
         if (!joinedRef.current) {
@@ -341,6 +348,7 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
         } else {
           send(msg);
         }
+        try { lastSentContentRef.current[key] = payload.content || ''; } catch {}
       }, delay);
     },
     [playgroundId, send]
