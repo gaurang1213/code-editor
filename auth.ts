@@ -118,7 +118,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     },
   },
   
-  secret: process.env.AUTH_SECRET,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   adapter: hasPrisma ? (PrismaAdapter as any)(db as any) : undefined,
   session: { strategy: "jwt" },
   ...authConfig,

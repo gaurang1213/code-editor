@@ -107,6 +107,18 @@ export const getAllPlaygroundForUser = async ()=>{
 
 export const getPlaygroundById = async (id:string)=>{
     try {
+        // First, try to fetch the saved template directly from templateFile via the unique playgroundId
+        // This works for both Prisma and our mock DB implementation.
+        const direct = await (db as any).templateFile?.findUnique?.({
+          where: { playgroundId: id },
+          select: { content: true },
+        });
+
+        if (direct && typeof direct.content === 'string') {
+          return { templateFiles: [{ content: direct.content }] } as any;
+        }
+
+        // Fallback: use the playground relation include/select if available (Prisma path)
         const playground = await db.playground.findUnique({
             where:{id},
             select:{
