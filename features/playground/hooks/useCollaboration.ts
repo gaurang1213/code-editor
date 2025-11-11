@@ -243,8 +243,10 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
           }
           // When syncing files, emit content-change per file to existing handlers
           const files = payload?.files || {};
+          const tsSync = payload?.ts as number | undefined;
           Object.keys(files).forEach((fid) => {
-            contentChangeHandlers.current.forEach((h) => h({ fileId: fid, content: files[fid] }));
+            // Mark these as coming from initial sync so callers can treat them differently
+            contentChangeHandlers.current.forEach((h) => h({ fileId: fid, content: files[fid], ts: tsSync, peerId: '__sync__' }));
           });
           // Mark as joined and flush queued messages
           if (!joinedRef.current) {

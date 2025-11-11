@@ -100,6 +100,26 @@ const MainPlaygroundPage: React.FC = () => {
   } = useWebContainer({ templateData, resetKey: id || "" });
 
   const lastSyncedContent = useRef<Map<string, string>>(new Map());
+  const lastRemoteTsRef = useRef<Map<string, number>>(new Map());
+
+  function getTemplateContentById(fileId: string): string | undefined {
+    try {
+      if (!templateDataStore) return undefined;
+      const parts = fileId.split('/').filter(Boolean);
+      const fname = parts.pop() || "";
+      const [name, ...extParts] = fname.split('.');
+      const ext = extParts.join('.');
+      let folder = templateDataStore as any;
+      for (const p of parts) {
+        const f = folder.items.find((it: any) => 'folderName' in it && it.folderName === p) as any;
+        if (!f) { folder = templateDataStore; break; }
+        folder = f;
+      }
+      const match = folder.items.find((it: any) => 'filename' in it && it.filename === name && it.fileExtension === ext) as any;
+      if (match && typeof match.content === 'string') return match.content as string;
+    } catch {}
+    return undefined;
+  }
 
   // Collaboration
   const { connected, clients, join, broadcastContentChange, broadcastSaved, onRemoteContentChange, onRemoteSaved, broadcastFileOp, onRemoteFileOp, requestFile } =
@@ -158,38 +178,45 @@ const MainPlaygroundPage: React.FC = () => {
     } catch {}
   }, [templateDataStore, activeFileId, openFiles, updateFileContent, markFileSaved]);
 
-  // Always fetch the latest content for the active file from the server snapshot
-  React.useEffect(() => {
-    // Only request from server if there are peers; otherwise prefer our saved DB/template state
-    if (activeFileId && clients.length > 1) {
-      requestFile(activeFileId);
-    }
-  }, [activeFileId, clients.length, requestFile]);
+  // Do NOT auto-request file content from server to avoid clobbering with empty snapshots on join
 
   // Apply incoming remote content changes
   React.useEffect(() => {
-    return onRemoteContentChange(async ({ fileId, content }) => {
+    return onRemoteContentChange(async ({ fileId, content, ts }) => {
       const targetFile = openFiles.find((f) => f.id === fileId);
-      if (targetFile) {
-        updateFileContent(fileId, content);
-      } else {
-        updateFileContent(fileId, content);
+      // Ignore if stale timestamp compared to what we've already applied
+      const lastTs = lastRemoteTsRef.current.get(fileId || "") || 0;
+      const incomingTs = typeof ts === 'number' ? ts : 0;
+      if (incomingTs && incomingTs < lastTs) return;
+
+      // Prevent empty payload from wiping local non-empty content on join/sync
+      const existing = targetFile?.content ?? getTemplateContentById(fileId || "") ?? "";
+      if ((content ?? "") === "" && existing.length > 0) {
+        return;
       }
-      // Always keep template data in sync so reopening shows latest
-      updateTemplateFileContent(fileId, content || "");
-      // Do not write remote changes to local FS (prevents inode races across clients)
+
+      if (targetFile) {
+        updateFileContent(fileId, content || "");
+      } else {
+        updateFileContent(fileId, content || "");
+      }
+      if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
     });
-  }, [onRemoteContentChange, updateFileContent, updateTemplateFileContent, openFiles]);
+  }, [onRemoteContentChange, updateFileContent, openFiles]);
 
   // Apply incoming remote save events to update content, clear unsaved badge, and sync template
   React.useEffect(() => {
-    return onRemoteSaved(async ({ fileId, content }) => {
+    return onRemoteSaved(async ({ fileId, content, ts }) => {
       if (!fileId) return;
       // Update visible content first in case 'saved' arrives before 'content-change'
+      const lastTs = lastRemoteTsRef.current.get(fileId || "") || 0;
+      const incomingTs = typeof ts === 'number' ? ts : 0;
+      if (incomingTs && incomingTs < lastTs) return;
       updateFileContent(fileId, content || "");
       markFileSaved(fileId, content || "");
       updateTemplateFileContent(fileId, content || "");
       // Do not write remote saves to local FS (only author writes on save)
+      if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
     });
   }, [onRemoteSaved, updateFileContent, markFileSaved, updateTemplateFileContent]);
 
