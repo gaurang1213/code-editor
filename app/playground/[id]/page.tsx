@@ -210,12 +210,7 @@ const MainPlaygroundPage: React.FC = () => {
         try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-stale', fileId: normId, incomingTs, lastTs })); } catch {}
         return;
       }
-      // If a remote save was applied, suppress any content-change at or before that save
-      const savedTs = lastSavedTsRef.current.get(normId || "") || 0;
-      if (savedTs && incomingTs && incomingTs <= savedTs) {
-        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-pre-saved', fileId: normId, incomingTs, savedTs })); } catch {}
-        return;
-      }
+      // Do not suppress typing after save; allow newest content to render regardless of save
 
       // Prevent empty payload from wiping local non-empty content on join/sync
       const existing = targetFile?.content ?? getTemplateContentById(localId || "") ?? "";

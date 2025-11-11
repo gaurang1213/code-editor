@@ -503,20 +503,38 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     }));
   },
   applyRemoteContent: (fileId, content) => {
-    set((state) => ({
-      openFiles: state.openFiles.map((file) =>
-        file.id === fileId
-          ? {
-              ...file,
-              content,
-              hasUnsavedChanges: file.hasUnsavedChanges,
-              originalContent: file.originalContent,
-            }
-          : file
-      ),
-      editorContent:
-        fileId === state.activeFileId ? content : state.editorContent,
-    }));
+    set((state) => {
+      const normalize = (id?: string | null) => {
+        if (!id) return '';
+        const parts = id.split('/').filter(Boolean);
+        if (parts.length >= 2) {
+          const last = parts[parts.length - 1];
+          const prev = parts[parts.length - 2];
+          if (last === prev) parts.splice(parts.length - 2, 1);
+        }
+        return parts.join('/');
+      };
+      const localActive = state.activeFileId;
+      const shouldUpdateEditor = (
+        fileId === localActive ||
+        (localActive ? fileId.endsWith('/' + localActive) : false) ||
+        (localActive ? localActive.endsWith('/' + fileId) : false) ||
+        (normalize(fileId) === normalize(localActive))
+      );
+      return {
+        openFiles: state.openFiles.map((file) =>
+          file.id === fileId
+            ? {
+                ...file,
+                content,
+                hasUnsavedChanges: file.hasUnsavedChanges,
+                originalContent: file.originalContent,
+              }
+            : file
+        ),
+        editorContent: shouldUpdateEditor ? content : state.editorContent,
+      } as any;
+    });
   },
   markFileSaved: (fileId, content) => {
     set((state) => ({
