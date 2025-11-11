@@ -75,6 +75,7 @@ const MainPlaygroundPage: React.FC = () => {
     closeFile,
     editorContent,
     updateFileContent,
+    applyRemoteContent,
     handleAddFile,
     handleAddFolder,
     handleDeleteFile,
@@ -231,7 +232,7 @@ const MainPlaygroundPage: React.FC = () => {
       }
 
       try { console.log('[collab]', JSON.stringify({ event: 'apply-change', fileId: normId, localId, len: (content||'').length })); } catch {}
-      updateFileContent(localId, content || "");
+      applyRemoteContent(localId, content || "");
       if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
     });
   }, [onRemoteContentChange, updateFileContent, openFiles]);

@@ -60,6 +60,7 @@ interface FileExplorerState {
     saveTemplateData: (data: TemplateFolder) => Promise<void>
   ) => Promise<void>;
   updateFileContent: (fileId: string, content: string) => void;
+  applyRemoteContent: (fileId: string, content: string) => void;
   markFileSaved: (fileId: string, content: string) => void;
   updateTemplateFileContent: (fileId: string, content: string) => void;
 }
@@ -494,6 +495,22 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
               ...file,
               content,
               hasUnsavedChanges: content !== file.originalContent,
+            }
+          : file
+      ),
+      editorContent:
+        fileId === state.activeFileId ? content : state.editorContent,
+    }));
+  },
+  applyRemoteContent: (fileId, content) => {
+    set((state) => ({
+      openFiles: state.openFiles.map((file) =>
+        file.id === fileId
+          ? {
+              ...file,
+              content,
+              hasUnsavedChanges: file.hasUnsavedChanges,
+              originalContent: file.originalContent,
             }
           : file
       ),
