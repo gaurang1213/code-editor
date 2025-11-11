@@ -217,6 +217,19 @@ const MainPlaygroundPage: React.FC = () => {
       updateTemplateFileContent(fileId, content || "");
       // Do not write remote saves to local FS (only author writes on save)
       if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
+
+      // Also reflect remote saves into local WebContainer FS so preview stays in sync
+      try {
+        const latestTemplateData = useFileExplorer.getState().templateData;
+        if (latestTemplateData && writeFileSync) {
+          const mockFile = { id: fileId } as any;
+          const filePath = findFilePath(mockFile as any, latestTemplateData) || fileId; // fallback to id path
+          await writeFileSync(filePath, content || "");
+          if (instance && instance.fs) {
+            await instance.fs.writeFile(filePath, content || "");
+          }
+        }
+      } catch {}
     });
   }, [onRemoteSaved, updateFileContent, markFileSaved, updateTemplateFileContent]);
 
@@ -781,7 +794,7 @@ const MainPlaygroundPage: React.FC = () => {
                             isLoading={containerLoading}
                             error={containerError}
                             serverUrl={serverUrl!}
-                            forceResetup={true}
+                            forceResetup={false}
                           />
                         </ResizablePanel>
                       </>
