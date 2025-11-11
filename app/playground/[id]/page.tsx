@@ -208,14 +208,17 @@ const MainPlaygroundPage: React.FC = () => {
   React.useEffect(() => {
     return onRemoteSaved(async ({ fileId, content, ts }) => {
       if (!fileId) return;
-      // Update visible content first in case 'saved' arrives before 'content-change'
-      const lastTs = lastRemoteTsRef.current.get(fileId || "") || 0;
-      const incomingTs = typeof ts === 'number' ? ts : 0;
-      if (incomingTs && incomingTs < lastTs) return;
+      // Treat remote 'saved' as authoritative: apply if non-empty; if empty, don't clobber non-empty local
+      const existing = getTemplateContentById(fileId || "") ?? "";
+      if ((content ?? "") === "" && existing.length > 0) {
+        return;
+      }
+      // Update template store first so any effects depending on it read fresh data
+      updateTemplateFileContent(fileId, content || "");
       updateFileContent(fileId, content || "");
       markFileSaved(fileId, content || "");
-      updateTemplateFileContent(fileId, content || "");
-      // Do not write remote saves to local FS (only author writes on save)
+      // Track ts for completeness but do not block application on ts
+      const incomingTs = typeof ts === 'number' ? ts : 0;
       if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
 
       // Also reflect remote saves into local WebContainer FS so preview stays in sync
