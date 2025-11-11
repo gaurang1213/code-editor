@@ -200,7 +200,8 @@ const MainPlaygroundPage: React.FC = () => {
   React.useEffect(() => {
     return onRemoteContentChange(async ({ fileId, content, ts }) => {
       const normId = normalizeFileId(fileId);
-      const targetFile = openFiles.find((f) => f.id === normId);
+      const targetFile = openFiles.find((f) => f.id === normId) || openFiles.find((f) => normalizeFileId(f.id) === normId);
+      const localId = targetFile?.id || normId;
       // Ignore if stale timestamp compared to what we've already applied
       const lastTs = lastRemoteTsRef.current.get(normId || "") || 0;
       const incomingTs = typeof ts === 'number' ? ts : 0;
@@ -216,7 +217,7 @@ const MainPlaygroundPage: React.FC = () => {
       }
 
       // Prevent empty payload from wiping local non-empty content on join/sync
-      const existing = targetFile?.content ?? getTemplateContentById(normId || "") ?? "";
+      const existing = targetFile?.content ?? getTemplateContentById(localId || "") ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
         try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-empty', fileId: normId, existingLen: existing.length })); } catch {}
         return;
@@ -229,13 +230,8 @@ const MainPlaygroundPage: React.FC = () => {
         return;
       }
 
-      if (targetFile) {
-        try { console.log('[collab]', JSON.stringify({ event: 'apply-change', fileId: normId, len: (content||'').length })); } catch {}
-        updateFileContent(normId, content || "");
-      } else {
-        try { console.log('[collab]', JSON.stringify({ event: 'apply-change-open-late', fileId: normId, len: (content||'').length })); } catch {}
-        updateFileContent(normId, content || "");
-      }
+      try { console.log('[collab]', JSON.stringify({ event: 'apply-change', fileId: normId, localId, len: (content||'').length })); } catch {}
+      updateFileContent(localId, content || "");
       if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
     });
   }, [onRemoteContentChange, updateFileContent, openFiles]);
@@ -245,17 +241,19 @@ const MainPlaygroundPage: React.FC = () => {
     return onRemoteSaved(async ({ fileId, content, ts }) => {
       const normId = normalizeFileId(fileId);
       if (!normId) return;
+      const targetFile = openFiles.find((f) => f.id === normId) || openFiles.find((f) => normalizeFileId(f.id) === normId);
+      const localId = targetFile?.id || normId;
       // Treat remote 'saved' as authoritative: apply if non-empty; if empty, don't clobber non-empty local
-      const existing = getTemplateContentById(normId || "") ?? "";
+      const existing = getTemplateContentById(localId || "") ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
         try { console.log('[collab]', JSON.stringify({ event: 'ignore-saved-empty', fileId: normId, existingLen: existing.length })); } catch {}
         return;
       }
       // Update template store first so any effects depending on it read fresh data
-      try { console.log('[collab]', JSON.stringify({ event: 'apply-saved', fileId: normId, len: (content||'').length })); } catch {}
-      updateTemplateFileContent(normId, content || "");
-      updateFileContent(normId, content || "");
-      markFileSaved(normId, content || "");
+      try { console.log('[collab]', JSON.stringify({ event: 'apply-saved', fileId: normId, localId, len: (content||'').length })); } catch {}
+      updateTemplateFileContent(localId, content || "");
+      updateFileContent(localId, content || "");
+      markFileSaved(localId, content || "");
       // Track ts for completeness but do not block application on ts
       const incomingTs = typeof ts === 'number' ? ts : 0;
       if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
@@ -265,8 +263,8 @@ const MainPlaygroundPage: React.FC = () => {
       try {
         const latestTemplateData = useFileExplorer.getState().templateData;
         if (latestTemplateData && writeFileSync) {
-          const mockFile = { id: normId } as any;
-          const filePath = findFilePath(mockFile as any, latestTemplateData) || normId; // fallback to id path
+          const mockFile = { id: localId } as any;
+          const filePath = findFilePath(mockFile as any, latestTemplateData) || localId; // fallback to id path
           await writeFileSync(filePath, content || "");
           if (instance && instance.fs) {
             await instance.fs.writeFile(filePath, content || "");
@@ -473,7 +471,7 @@ const MainPlaygroundPage: React.FC = () => {
 
   const handleSave = useCallback(
     async (fileId?: string) => {
-      const targetFileId = normalizeFileId(fileId || activeFileId);
+      const targetFileId = fileId || activeFileId;
       if (!targetFileId) return;
 
       const fileToSave = openFiles.find((f) => f.id === targetFileId);
@@ -818,9 +816,9 @@ const MainPlaygroundPage: React.FC = () => {
                         content={activeFile?.content || ""}
                         onContentChange={(value) => {
                           if (activeFileId) {
-                            const fid = normalizeFileId(activeFileId);
-                            updateFileContent(fid, value);
-                            broadcastContentChange({ fileId: fid, content: value });
+                            updateFileContent(activeFileId, value);
+                            const wireId = normalizeFileId(activeFileId);
+                            broadcastContentChange({ fileId: wireId, content: value });
                           }
                         }}
                       />
