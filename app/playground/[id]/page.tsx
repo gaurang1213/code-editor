@@ -101,6 +101,7 @@ const MainPlaygroundPage: React.FC = () => {
 
   const lastSyncedContent = useRef<Map<string, string>>(new Map());
   const lastRemoteTsRef = useRef<Map<string, number>>(new Map());
+  const lastSavedTsRef = useRef<Map<string, number>>(new Map());
 
   function getTemplateContentById(fileId: string): string | undefined {
     try {
@@ -188,10 +189,19 @@ const MainPlaygroundPage: React.FC = () => {
       const lastTs = lastRemoteTsRef.current.get(fileId || "") || 0;
       const incomingTs = typeof ts === 'number' ? ts : 0;
       if (incomingTs && incomingTs < lastTs) return;
+      // If a remote save was applied, suppress any content-change at or before that save
+      const savedTs = lastSavedTsRef.current.get(fileId || "") || 0;
+      if (savedTs && incomingTs && incomingTs <= savedTs) return;
 
       // Prevent empty payload from wiping local non-empty content on join/sync
       const existing = targetFile?.content ?? getTemplateContentById(fileId || "") ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
+        return;
+      }
+
+      // Ignore no-op content
+      if ((content ?? "") === existing) {
+        if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
         return;
       }
 
@@ -220,6 +230,7 @@ const MainPlaygroundPage: React.FC = () => {
       // Track ts for completeness but do not block application on ts
       const incomingTs = typeof ts === 'number' ? ts : 0;
       if (incomingTs) lastRemoteTsRef.current.set(fileId || "", incomingTs);
+      if (incomingTs) lastSavedTsRef.current.set(fileId || "", incomingTs);
 
       // Also reflect remote saves into local WebContainer FS so preview stays in sync
       try {
