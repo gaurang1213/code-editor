@@ -15,11 +15,25 @@ type ContentChangePayload = {
   ts?: number;
 };
 
+// Extend WebSocket type to include our custom properties
+declare global {
+  interface WebSocket {
+    _socketId?: string;
+  }
+}
+
+type Client = {
+  socketId: string;
+  username: string;
+};
+
 export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
+  const [socketId, setSocketId] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [peerJoined, setPeerJoined] = useState<string | null>(null);
-  const [clients, setClients] = useState<Array<{ socketId: string; username: string }>>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const socketIdRef = useRef('');
 
   const contentChangeHandlers = useRef<Set<(p: ContentChangePayload) => void>>(new Set());
   const savedHandlers = useRef<Set<(p: ContentChangePayload) => void>>(new Set());
@@ -118,7 +132,6 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
     [playgroundId, sendRaw, user?.name, user?.email]
   );
 
-
   const leave = useCallback(() => {
     try {
       sendRaw({ action: "leave", payload: { roomId: playgroundId } });
@@ -137,8 +150,16 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
     const wsUrl = base.replace(/^http/, "ws") + "/ws";
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    
+    // Generate a unique client ID if not provided by the server
+    const clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     ws.addEventListener("open", () => {
+      // Use server-provided socket ID or fall back to our generated one
+      const newSocketId = (ws as any)._socketId || clientId;
+      setSocketId(newSocketId);
+      socketIdRef.current = newSocketId;
+      (ws as any)._socketId = newSocketId; // Store it on the socket for reference
       setConnected(true);
       reconnectAttemptsRef.current = 0;
       leavingRef.current = false; // new clean connection
@@ -508,17 +529,21 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
     return () => { savedHandlers.current.delete(handler); };
   }, []);
 
+  // Provide a stable reference to socketId that won't change between renders
+  const getSocketId = useCallback(() => socketIdRef.current, []);
+
   return {
     connected,
-    peerJoined,
     clients,
+    socketId: socketIdRef.current, // Always use the ref value to avoid hydration issues
+    getSocketId,
     join,
     leave,
     broadcastContentChange,
     broadcastSaved,
+    broadcastFileOp,
     onRemoteContentChange,
     onRemoteSaved,
-    broadcastFileOp,
     onRemoteFileOp,
     requestFile,
   };

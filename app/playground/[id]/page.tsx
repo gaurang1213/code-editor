@@ -138,8 +138,22 @@ const MainPlaygroundPage: React.FC = () => {
   }
 
   // Collaboration
-  const { connected, clients, join, broadcastContentChange, broadcastSaved, onRemoteContentChange, onRemoteSaved, broadcastFileOp, onRemoteFileOp, requestFile } =
-    useCollaboration({ playgroundId: id || "", socketId });
+  const { 
+    connected, 
+    clients, 
+    join, 
+    broadcastContentChange, 
+    broadcastSaved, 
+    onRemoteContentChange, 
+    onRemoteSaved, 
+    broadcastFileOp, 
+    onRemoteFileOp, 
+    requestFile,
+    getSocketId
+  } = useCollaboration({ playgroundId: id || "" });
+  
+  // Get current socket ID - this will be stable across re-renders
+  const socketId = getSocketId();
 
   // Set current playground id in store
   React.useEffect(() => {
