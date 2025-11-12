@@ -66,7 +66,7 @@ const MainPlaygroundPage: React.FC = () => {
   const [isPreviewVisible, setIsPreviewVisible] = useState(true);
 
   // Custom hooks
-  const { playgroundData, templateData, isLoading, error, saveTemplateData } =
+  const { playgroundData, templateData: playgroundTemplateData, isLoading, error, saveTemplateData } =
     usePlayground(id || "");
   const {
     templateData: templateDataStore,
