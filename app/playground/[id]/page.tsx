@@ -714,19 +714,30 @@ const MainPlaygroundPage: React.FC = () => {
 
   return (
     <TooltipProvider>
-      <>
-        <TemplateFileTree
-          data={templateDataStore}
-          onFileSelect={handleFileSelect}
-          selectedFile={activeFile}
-          title="File Explorer"
-          onAddFile={wrappedHandleAddFile}
-          onAddFolder={wrappedHandleAddFolder}
-          onDeleteFile={wrappedHandleDeleteFile}
-          onDeleteFolder={wrappedHandleDeleteFolder}
-          onRenameFile={wrappedHandleRenameFile}
-          onRenameFolder={wrappedHandleRenameFolder}
-        />
+      <div className="flex h-full w-full">
+        {/* Sidebar with File Explorer */}
+        <div className="w-64 border-r h-[calc(100vh-4rem)] overflow-auto">
+          <div className="p-2">
+            <h2 className="px-2 text-lg font-semibold mb-2">Files</h2>
+            <div className="h-[calc(100vh-8rem)] overflow-y-auto">
+              <TemplateFileTree
+                data={templateDataStore}
+                onFileSelect={handleFileSelect}
+                selectedFile={activeFile}
+                title="File Explorer"
+                onAddFile={wrappedHandleAddFile}
+                onAddFolder={wrappedHandleAddFolder}
+                onDeleteFile={wrappedHandleDeleteFile}
+                onDeleteFolder={wrappedHandleDeleteFolder}
+                onRenameFile={wrappedHandleRenameFile}
+                onRenameFolder={wrappedHandleRenameFolder}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col h-[calc(100vh-4rem)]">
 
         <SidebarInset>
           <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
@@ -921,15 +932,18 @@ const MainPlaygroundPage: React.FC = () => {
           </div>
         </SidebarInset>
 
-      <ConfirmationDialog
-      isOpen={confirmationDialog.isOpen}
-      title={confirmationDialog.title}
-      description={confirmationDialog.description}
-      onConfirm={confirmationDialog.onConfirm}
-      onCancel={confirmationDialog.onCancel}
-      setIsOpen={(open) => setConfirmationDialog((prev) => ({ ...prev, isOpen: open }))}
-      />
-      </>
+          <ConfirmationDialog
+            isOpen={confirmationDialog.isOpen}
+            onCancel={() => setConfirmationDialog({ ...confirmationDialog, isOpen: false })}
+            onConfirm={() => {
+              confirmationDialog.onConfirm();
+              setConfirmationDialog({ ...confirmationDialog, isOpen: false });
+            }}
+            title={confirmationDialog.title}
+            description={confirmationDialog.description}
+          />
+        </div>
+      </div>
     </TooltipProvider>
   );
 };
