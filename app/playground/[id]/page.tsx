@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useRef } from "react";
-import { useState, useCallback } from "react";
+import React, { useRef, useCallback, useEffect, useState } from "react";
+import { useRouter } from 'next/navigation';
+import path from 'path';
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { TemplateFileTree } from "@/features/playground/components/playground-explorer";
@@ -126,15 +127,28 @@ const MainPlaygroundPage: React.FC = () => {
   // Normalize file IDs to avoid duplicates like "name.ext/name.ext"
   function normalizeFileId(id: string | undefined | null): string {
     if (!id) return '';
-    const parts = id.split('/').filter(Boolean);
-    if (parts.length >= 2) {
-      const last = parts[parts.length - 1];
-      const prev = parts[parts.length - 2];
-      if (last && prev && last === prev) {
-        parts.splice(parts.length - 2, 1);
-      }
+    // First normalize the path to handle any '..' or '.' segments
+    const normalizedPath = path.normalize(id).replace(/\\/g, '/');
+    // Split and filter out empty segments
+    const parts = normalizedPath.split('/').filter(Boolean);
+    
+    // Handle duplicate segments (like 'vit.js/vit.js' -> 'vit.js')
+    if (parts.length >= 2 && parts[parts.length - 1] === parts[parts.length - 2]) {
+      parts.pop();
     }
+    
     return parts.join('/');
+  }
+  
+  // Helper to match file IDs that might be in different formats
+  function matchFileId(a: string, b: string): boolean {
+    if (a === b) return true;
+    const normA = normalizeFileId(a);
+    const normB = normalizeFileId(b);
+    if (normA === normB) return true;
+    
+    // Check if one is a suffix of the other (e.g., 'path/to/file.js' matches 'file.js')
+    return normA.endsWith('/' + normB) || normB.endsWith('/' + normA);
   }
 
   // Collaboration
@@ -236,39 +250,17 @@ const MainPlaygroundPage: React.FC = () => {
         console.error('[collab] Error logging content change:', e);
       }
 
-      // Apply the remote content immediately without any timestamp checks
-      // This ensures real-time updates for typing
       try {
-        // Find the target file using multiple matching strategies
-        const targetFile = openFiles.find(f => {
-          if (!f.id) return false;
-          
-          // Exact match
-          if (f.id === fileId) return true;
-          
-          // Filename match (last segment)
-          const fileSegments = f.id.split('/');
-          const idSegments = fileId.split('/');
-          const fileBase = fileSegments[fileSegments.length - 1];
-          const idBase = idSegments[idSegments.length - 1];
-          
-          if (fileBase === idBase) return true;
-          
-          // Check if one is a suffix of the other
-          if (f.id.endsWith('/' + fileId) || fileId.endsWith('/' + f.id)) {
-            return true;
-          }
-          
-          return false;
-        });
-        
+        // Find the target file using our matching function
+        const targetFile = openFiles.find(f => f.id && matchFileId(f.id, fileId));
         const localId = targetFile?.id || fileId;
         
         console.log('[collab] Applying remote content:', {
           originalFileId: fileId,
           localId,
           hasTarget: !!targetFile,
-          contentLength: (content || '').length
+          contentLength: (content || '').length,
+          openFileIds: openFiles.map(f => f.id).join(',')
         });
         
         // Apply the remote content
