@@ -91,6 +91,12 @@ const MainPlaygroundPage: React.FC = () => {
     markFileSaved,
     updateTemplateFileContent,
   } = useFileExplorer();
+  
+  // Ensure templateData is never null
+  const templateData = templateDataStore || {
+    folderName: '',
+    items: []
+  };
 
   const {
     serverUrl,
@@ -251,8 +257,25 @@ const MainPlaygroundPage: React.FC = () => {
       }
 
       try {
-        // Find the target file using our matching function
-        const targetFile = openFiles.find(f => f.id && matchFileId(f.id, fileId));
+        // Try to find the file with exact match first
+        let targetFile = openFiles.find(f => f.id === fileId);
+        
+        // If no exact match, try to find by filename only
+        if (!targetFile) {
+          const fileName = fileId.split('/').pop();
+          targetFile = openFiles.find(f => f.id && f.id.endsWith('/' + fileName) || f.id === fileName);
+        }
+        
+        // If still no match, try to find any file with similar name (case insensitive)
+        if (!targetFile) {
+          const fileName = fileId.split('/').pop()?.toLowerCase();
+          targetFile = openFiles.find(f => {
+            const fname = f.id?.split('/').pop()?.toLowerCase();
+            return fname === fileName;
+          });
+        }
+        
+        // If we found a matching file, use its ID, otherwise use the original ID
         const localId = targetFile?.id || fileId;
         
         console.log('[collab] Applying remote content:', {
@@ -263,7 +286,7 @@ const MainPlaygroundPage: React.FC = () => {
           openFileIds: openFiles.map(f => f.id).join(',')
         });
         
-        // Apply the remote content
+        // Apply the remote content using the local ID
         applyRemoteContent(localId, content || '');
         
         // Update the last timestamp for this file if we have one

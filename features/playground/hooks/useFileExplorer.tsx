@@ -504,46 +504,88 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
   },
   applyRemoteContent: (fileId, content) => {
     set((state) => {
-      // Normalize file IDs by removing any duplicate path segments (e.g., 'file.js/file.js' -> 'file.js')
-      const normalize = (id: string | undefined | null): string => {
-        if (!id) return '';
-        const parts = id.split('/').filter(Boolean);
-        if (parts.length >= 2) {
-          const last = parts[parts.length - 1];
-          const prev = parts[parts.length - 2];
-          if (last === prev) parts.splice(parts.length - 2, 1);
+      // Helper function to normalize file paths
+      const normalizePath = (path: string): string => {
+        if (!path) return '';
+        const parts = path.split('/').filter(Boolean);
+        // Remove duplicate segments (e.g., 'file.js/file.js' -> 'file.js')
+        for (let i = 1; i < parts.length; i++) {
+          if (parts[i] === parts[i - 1]) {
+            parts.splice(i, 1);
+            i--;
+          }
         }
         return parts.join('/');
       };
-
-      // Find the file by ID, trying different matching strategies
-      const findFile = (id: string) => {
-        // Exact match
-        const exactMatch = state.openFiles.find(f => f.id === id);
-        if (exactMatch) return exactMatch;
-        
-        // Normalized match
-        const normalizedId = normalize(id);
-        return state.openFiles.find(f => {
-          const fileId = f.id;
-          if (!fileId) return false;
-          
-          // Check if IDs match after normalization
-          if (normalize(fileId) === normalizedId) return true;
-          
-          // Check if one ID is a suffix of the other
-          if (fileId.endsWith('/' + id) || id.endsWith('/' + fileId)) return true;
-          
-          // Check if the last segment matches (filename only)
-          const fileSegments = fileId.split('/');
-          const idSegments = id.split('/');
-          return fileSegments[fileSegments.length - 1] === idSegments[idSegments.length - 1];
-        });
+      
+      // Helper to get the filename from a path
+      const getFilename = (path: string): string => {
+        const parts = path.split('/').filter(Boolean);
+        return parts[parts.length - 1] || '';
       };
 
-      // Find the target file using our matching logic
-      const targetFile = findFile(fileId);
+      // Enhanced file ID matching function
+      const findMatchingFile = (searchId: string) => {
+        if (!searchId) return null;
+        
+        // 1. Try exact match first
+        const exactMatch = state.openFiles.find(f => f.id === searchId);
+        if (exactMatch) return { file: exactMatch, matchType: 'exact' };
+        
+        const normalizedSearchId = normalizePath(searchId);
+        
+        // 2. Try normalized path match
+        const normalizedMatch = state.openFiles.find(f => {
+          if (!f.id) return false;
+          return normalizePath(f.id) === normalizedSearchId;
+        });
+        if (normalizedMatch) return { file: normalizedMatch, matchType: 'normalized' };
+        
+        // 3. Try filename-only match (last segment)
+        const searchSegments = searchId.split('/');
+        const searchFilename = searchSegments[searchSegments.length - 1];
+        
+        const filenameMatch = state.openFiles.find(f => {
+          if (!f.id) return false;
+          const fileSegments = f.id.split('/');
+          return fileSegments[fileSegments.length - 1] === searchFilename;
+        });
+        
+        if (filenameMatch) return { file: filenameMatch, matchType: 'filename' };
+        
+        // 4. Try case-insensitive filename match
+        const searchFilenameLower = searchFilename.toLowerCase();
+        const caseInsensitiveMatch = state.openFiles.find(f => {
+          if (!f.id) return false;
+          const fileSegments = f.id.split('/');
+          return fileSegments[fileSegments.length - 1].toLowerCase() === searchFilenameLower;
+        });
+        
+        if (caseInsensitiveMatch) return { file: caseInsensitiveMatch, matchType: 'case-insensitive' };
+        
+        return null;
+      };
+      
+      // Find the target file using our enhanced matching
+      const match = findMatchingFile(fileId);
+      const targetFile = match?.file;
       const localFileId = targetFile?.id || fileId;
+      
+      // If no matching file found, we can't update anything
+      if (!targetFile) {
+        console.warn(`[applyRemoteContent] No matching file found for: ${fileId}`);
+        return state;
+      }
+      
+      // Log the matching result for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[applyRemoteContent]', {
+          inputFileId: fileId,
+          matchedFileId: targetFile?.id,
+          matchType: match?.matchType || 'none',
+          openFileIds: state.openFiles.map(f => f.id).join(',')
+        });
+      }
       
       // Determine if we should update the editor content
       const shouldUpdateEditor = (() => {
@@ -554,7 +596,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
         if (localFileId === activeId) return true;
         
         // Normalized match
-        if (normalize(localFileId) === normalize(activeId)) return true;
+        if (normalizePath(localFileId) === normalizePath(activeId)) return true;
         
         // Suffix match
         if (localFileId.endsWith('/' + activeId) || activeId.endsWith('/' + localFileId)) {
@@ -562,9 +604,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
         }
         
         // Filename match (last segment)
-        const activeSegments = activeId.split('/');
-        const fileSegments = localFileId.split('/');
-        return fileSegments[fileSegments.length - 1] === activeSegments[activeSegments.length - 1];
+        return getFilename(localFileId) === getFilename(activeId);
       })();
 
       // Update the open files array with the new content
