@@ -262,14 +262,46 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
           metricsRef.current.changeCount += 1;
           const { fileId, content } = payload || {};
           const tsPayload = payload?.ts as number | undefined;
-          contentChangeHandlers.current.forEach((h) => h({ fileId, content, ts: tsPayload }));
+          
+          console.log('[collab] Processing content-change:', { 
+            fileId, 
+            contentLength: content?.length || 0,
+            ts: tsPayload,
+            handlerCount: contentChangeHandlers.current.size
+          });
+          
+          if (!fileId) {
+            console.error('[collab] Received content-change with no fileId');
+            return;
+          }
+          
+          try {
+            // Convert to array to safely get index
+            const handlers = Array.from(contentChangeHandlers.current);
+            for (let i = 0; i < handlers.length; i++) {
+              const handler = handlers[i];
+              try {
+                console.log(`[collab] Dispatching to handler ${i + 1}/${handlers.length}`);
+                handler({ 
+                  fileId, 
+                  content: content || '', 
+                  ts: tsPayload,
+                  peerId: payload?.peerId
+                });
+              } catch (e) {
+                console.error(`[collab] Error in content-change handler ${i + 1}:`, e);
+              }
+            }
+          } catch (e) {
+            console.error('[collab] Error in content-change dispatch:', e);
+          }
         } else if (action === "saved") {
+          console.log('[collab] Dispatching saved event to', savedHandlers.current.size, 'handlers');
           metricsRef.current.savedCount += 1;
           const { fileId, content } = payload || {};
           const tsPayload = payload?.ts as number | undefined;
           savedHandlers.current.forEach((h) => h({ fileId, content, ts: tsPayload }));
         } else if (action === "file-op") {
-          metricsRef.current.fileOpCount += 1;
           fileOpHandlers.current.forEach((h) => h(payload));
         } else if (action === "pong" || action === "ping") {
           // ignore
