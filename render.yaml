@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: RealIDE
+    name: LiveIDE
     env: node
     autoDeploy: true
     buildCommand: |
