@@ -200,37 +200,111 @@ const MainPlaygroundPage: React.FC = () => {
   // Apply incoming remote content changes
   React.useEffect(() => {
     return onRemoteContentChange(async ({ fileId, content, ts }) => {
-      const normId = normalizeFileId(fileId);
-      const targetFile = openFiles.find((f) => f.id === normId) || openFiles.find((f) => normalizeFileId(f.id) === normId);
-      const localId = targetFile?.id || normId;
-      // Ignore if stale timestamp compared to what we've already applied
-      const lastTs = lastRemoteTsRef.current.get(normId || "") || 0;
-      const incomingTs = typeof ts === 'number' ? ts : 0;
-      if (incomingTs && incomingTs < lastTs) {
-        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-stale', fileId: normId, incomingTs, lastTs })); } catch {}
+      if (!fileId) {
+        console.log('[collab] Ignoring content change with no fileId');
         return;
       }
-      // Do not suppress typing after save; allow newest content to render regardless of save
+
+      // Normalize the file ID for comparison
+      const normId = normalizeFileId(fileId);
+      
+      // Find the target file using multiple matching strategies
+      const targetFile = openFiles.find(f => {
+        // Exact match
+        if (f.id === fileId || f.id === normId) return true;
+        
+        // Normalized match
+        if (normalizeFileId(f.id) === normId) return true;
+        
+        // Suffix match (e.g., 'path/to/file.js' matches 'file.js')
+        if (f.id.endsWith('/' + fileId) || fileId.endsWith('/' + f.id)) return true;
+        
+        // Filename match (last segment)
+        const fileSegments = f.id.split('/');
+        const idSegments = fileId.split('/');
+        return fileSegments[fileSegments.length - 1] === idSegments[idSegments.length - 1];
+      });
+      
+      // Use the original file ID from the open file if found, otherwise use the normalized ID
+      const localId = targetFile?.id || normId;
+      
+      // Log the incoming change for debugging
+      try {
+        console.log('[collab]', JSON.stringify({
+          event: 'receive-change',
+          fileId,
+          normId,
+          localId,
+          hasTarget: !!targetFile,
+          contentLength: (content || '').length,
+          ts: typeof ts === 'number' ? ts : 'none'
+        }));
+      } catch {}
+
+      // Ignore if stale timestamp compared to what we've already applied
+      const lastTs = lastRemoteTsRef.current.get(normId) || 0;
+      const incomingTs = typeof ts === 'number' ? ts : 0;
+      
+      if (incomingTs && incomingTs < lastTs) {
+        try { 
+          console.log('[collab]', JSON.stringify({ 
+            event: 'ignore-change-stale', 
+            fileId: normId, 
+            incomingTs, 
+            lastTs,
+            delta: lastTs - incomingTs
+          })); 
+        } catch {}
+        return;
+      }
 
       // Prevent empty payload from wiping local non-empty content on join/sync
-      const existing = targetFile?.content ?? getTemplateContentById(localId || "") ?? "";
+      const existing = targetFile?.content ?? getTemplateContentById(localId) ?? "";
       if ((content ?? "") === "" && existing.length > 0) {
-        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-empty', fileId: normId, existingLen: existing.length })); } catch {}
+        try { 
+          console.log('[collab]', JSON.stringify({ 
+            event: 'ignore-change-empty', 
+            fileId: normId, 
+            existingLen: existing.length 
+          })); 
+        } catch {}
         return;
       }
 
-      // Ignore no-op content
+      // Ignore no-op content changes
       if ((content ?? "") === existing) {
-        try { console.log('[collab]', JSON.stringify({ event: 'ignore-change-noop', fileId: normId, len: (content||'').length })); } catch {}
-        if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
+        try { 
+          console.log('[collab]', JSON.stringify({ 
+            event: 'ignore-change-noop', 
+            fileId: normId, 
+            len: (content || '').length 
+          })); 
+        } catch {}
+        if (incomingTs) lastRemoteTsRef.current.set(normId, incomingTs);
         return;
       }
 
-      try { console.log('[collab]', JSON.stringify({ event: 'apply-change', fileId: normId, localId, len: (content||'').length })); } catch {}
+      // Apply the content change
+      try { 
+        console.log('[collab]', JSON.stringify({ 
+          event: 'apply-remote-content', 
+          fileId: normId, 
+          localId, 
+          len: (content || '').length,
+          hasTarget: !!targetFile,
+          activeFileId: activeFileId,
+          isActive: localId === activeFileId || normId === activeFileId || 
+                   (activeFileId && (activeFileId.endsWith('/' + localId) || localId.endsWith('/' + activeFileId)))
+        })); 
+      } catch {}
+      
+      // Apply the remote content
       applyRemoteContent(localId, content || "");
-      if (incomingTs) lastRemoteTsRef.current.set(normId || "", incomingTs);
+      
+      // Update the last timestamp for this file
+      if (incomingTs) lastRemoteTsRef.current.set(normId, incomingTs);
     });
-  }, [onRemoteContentChange, updateFileContent, openFiles]);
+  }, [onRemoteContentChange, openFiles, activeFileId]);
 
   // Apply incoming remote save events to update content, clear unsaved badge, and sync template
   React.useEffect(() => {

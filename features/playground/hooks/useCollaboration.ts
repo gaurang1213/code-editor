@@ -328,27 +328,76 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
 
   const broadcastContentChange = useCallback(
     (payload: ContentChangePayload) => {
-      if (!playgroundId) return;
-      const key = payload.fileId || "__all__";
-      if (debounceTimersRef.current[key]) clearTimeout(debounceTimersRef.current[key]);
+      if (!playgroundId || !payload.fileId) {
+        console.log('[collab] broadcastContentChange: Missing playgroundId or fileId', { playgroundId, fileId: payload?.fileId });
+        return;
+      }
+      
+      const key = payload.fileId;
+      const timestamp = Date.now();
+      
+      // Clear any pending debounce for this file
+      if (debounceTimersRef.current[key]) {
+        clearTimeout(debounceTimersRef.current[key]);
+      }
+      
+      // Get debounce delay (0ms in debug mode, 30ms otherwise)
       const delay = (() : number => {
-        try { return (localStorage.getItem('COLLAB_DEBUG') === '1') ? 0 : 30; } catch { return 30; }
+        try { 
+          return (localStorage.getItem('COLLAB_DEBUG') === '1') ? 0 : 30; 
+        } catch { 
+          return 30; 
+        }
       })();
-      // Dedupe identical payloads
+      
+      // Dedupe identical payloads to reduce network traffic
       try {
         const last = lastSentContentRef.current[key];
         if (last === (payload.content || '')) {
+          console.log('[collab] broadcastContentChange: Skipping duplicate content for', key);
           return;
         }
-      } catch {}
+      } catch (e) {
+        console.error('[collab] Error checking for duplicate content:', e);
+      }
+      
+      // Set up the debounced send
       debounceTimersRef.current[key] = setTimeout(() => {
-        const msg = { action: "content-change", payload: { roomId: playgroundId, fileId: payload.fileId, content: payload.content, filePath: payload.filePath } };
-        if (!joinedRef.current) {
-          outboxRef.current.push(msg);
-        } else {
-          send(msg);
+        try {
+          const msg = { 
+            action: "content-change", 
+            payload: { 
+              roomId: playgroundId, 
+              fileId: payload.fileId, 
+              content: payload.content, 
+              filePath: payload.filePath,
+              ts: timestamp // Include timestamp for ordering
+            } 
+          };
+          
+          console.log('[collab] Broadcasting content change:', { 
+            fileId: payload.fileId, 
+            contentLength: (payload.content || '').length,
+            ts: timestamp
+          });
+          
+          if (!joinedRef.current) {
+            outboxRef.current.push(msg);
+            console.log('[collab] Added to outbox (not connected)');
+          } else {
+            send(msg);
+          }
+          
+          // Update last sent content
+          try { 
+            lastSentContentRef.current[key] = payload.content || ''; 
+          } catch (e) {
+            console.error('[collab] Error updating last sent content:', e);
+          }
+          
+        } catch (e) {
+          console.error('[collab] Error in broadcastContentChange:', e);
         }
-        try { lastSentContentRef.current[key] = payload.content || ''; } catch {}
       }, delay);
     },
     [playgroundId, send]
@@ -356,10 +405,32 @@ export function useCollaboration({ playgroundId }: UseCollaborationOptions) {
 
   const broadcastSaved = useCallback(
     (payload: ContentChangePayload) => {
-      if (!playgroundId) return;
-      const msg = { action: "saved", payload: { roomId: playgroundId, fileId: payload.fileId, content: payload.content } };
+      if (!playgroundId || !payload.fileId) {
+        console.log('[collab] broadcastSaved: Missing playgroundId or fileId', { playgroundId, fileId: payload?.fileId });
+        return;
+      }
+      
+      const timestamp = Date.now();
+      const msg = { 
+        action: "saved", 
+        payload: { 
+          roomId: playgroundId, 
+          fileId: payload.fileId, 
+          content: payload.content,
+          ts: timestamp,
+          filePath: payload.filePath
+        } 
+      };
+      
+      console.log('[collab] Broadcasting saved:', { 
+        fileId: payload.fileId, 
+        contentLength: (payload.content || '').length,
+        ts: timestamp 
+      });
+      
       if (!joinedRef.current) {
         outboxRef.current.push(msg);
+        console.log('[collab] Added saved to outbox (not connected)');
       } else {
         send(msg);
       }

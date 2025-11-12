@@ -504,7 +504,8 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
   },
   applyRemoteContent: (fileId, content) => {
     set((state) => {
-      const normalize = (id?: string | null) => {
+      // Normalize file IDs by removing any duplicate path segments (e.g., 'file.js/file.js' -> 'file.js')
+      const normalize = (id: string | undefined | null): string => {
         if (!id) return '';
         const parts = id.split('/').filter(Boolean);
         if (parts.length >= 2) {
@@ -514,26 +515,74 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
         }
         return parts.join('/');
       };
-      const localActive = state.activeFileId;
-      const shouldUpdateEditor = (
-        fileId === localActive ||
-        (localActive ? fileId.endsWith('/' + localActive) : false) ||
-        (localActive ? localActive.endsWith('/' + fileId) : false) ||
-        (normalize(fileId) === normalize(localActive))
+
+      // Find the file by ID, trying different matching strategies
+      const findFile = (id: string) => {
+        // Exact match
+        const exactMatch = state.openFiles.find(f => f.id === id);
+        if (exactMatch) return exactMatch;
+        
+        // Normalized match
+        const normalizedId = normalize(id);
+        return state.openFiles.find(f => {
+          const fileId = f.id;
+          if (!fileId) return false;
+          
+          // Check if IDs match after normalization
+          if (normalize(fileId) === normalizedId) return true;
+          
+          // Check if one ID is a suffix of the other
+          if (fileId.endsWith('/' + id) || id.endsWith('/' + fileId)) return true;
+          
+          // Check if the last segment matches (filename only)
+          const fileSegments = fileId.split('/');
+          const idSegments = id.split('/');
+          return fileSegments[fileSegments.length - 1] === idSegments[idSegments.length - 1];
+        });
+      };
+
+      // Find the target file using our matching logic
+      const targetFile = findFile(fileId);
+      const localFileId = targetFile?.id || fileId;
+      
+      // Determine if we should update the editor content
+      const shouldUpdateEditor = (() => {
+        const activeId = state.activeFileId;
+        if (!activeId) return false;
+        
+        // Direct match
+        if (localFileId === activeId) return true;
+        
+        // Normalized match
+        if (normalize(localFileId) === normalize(activeId)) return true;
+        
+        // Suffix match
+        if (localFileId.endsWith('/' + activeId) || activeId.endsWith('/' + localFileId)) {
+          return true;
+        }
+        
+        // Filename match (last segment)
+        const activeSegments = activeId.split('/');
+        const fileSegments = localFileId.split('/');
+        return fileSegments[fileSegments.length - 1] === activeSegments[activeSegments.length - 1];
+      })();
+
+      // Update the open files array with the new content
+      const updatedFiles = state.openFiles.map((file) =>
+        file.id === localFileId || findFile(file.id)?.id === localFileId
+          ? {
+              ...file,
+              content,
+              hasUnsavedChanges: file.hasUnsavedChanges, // Preserve unsaved changes state
+              originalContent: file.originalContent,     // Preserve original content
+            }
+          : file
       );
+
       return {
-        openFiles: state.openFiles.map((file) =>
-          file.id === fileId
-            ? {
-                ...file,
-                content,
-                hasUnsavedChanges: file.hasUnsavedChanges,
-                originalContent: file.originalContent,
-              }
-            : file
-        ),
+        openFiles: updatedFiles,
         editorContent: shouldUpdateEditor ? content : state.editorContent,
-      } as any;
+      };
     });
   },
   markFileSaved: (fileId, content) => {
