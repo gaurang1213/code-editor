@@ -97,7 +97,6 @@ const MainPlaygroundPage: React.FC = () => {
     error: containerError,
     instance,
     writeFileSync,
-    // @ts-ignore
   } = useWebContainer({ templateData, resetKey: id || "" });
 
   const lastSyncedContent = useRef<Map<string, string>>(new Map());
@@ -140,7 +139,7 @@ const MainPlaygroundPage: React.FC = () => {
 
   // Collaboration
   const { connected, clients, join, broadcastContentChange, broadcastSaved, onRemoteContentChange, onRemoteSaved, broadcastFileOp, onRemoteFileOp, requestFile } =
-    useCollaboration({ playgroundId: id || "" });
+    useCollaboration({ playgroundId: id || "", socketId });
 
   // Set current playground id in store
   React.useEffect(() => {
@@ -199,112 +198,77 @@ const MainPlaygroundPage: React.FC = () => {
 
   // Apply incoming remote content changes
   React.useEffect(() => {
-    return onRemoteContentChange(async ({ fileId, content, ts }) => {
+    return onRemoteContentChange(async ({ fileId, content, ts, peerId }) => {
+      // Ignore our own messages (handled by local state)
+      if (peerId === socketId) {
+        console.log('[collab] Ignoring our own content change');
+        return;
+      }
+
       if (!fileId) {
         console.log('[collab] Ignoring content change with no fileId');
         return;
       }
 
-      // Normalize the file ID for comparison
-      const normId = normalizeFileId(fileId);
-      
-      // Find the target file using multiple matching strategies
-      const targetFile = openFiles.find(f => {
-        // Exact match
-        if (f.id === fileId || f.id === normId) return true;
-        
-        // Normalized match
-        if (normalizeFileId(f.id) === normId) return true;
-        
-        // Suffix match (e.g., 'path/to/file.js' matches 'file.js')
-        if (f.id.endsWith('/' + fileId) || fileId.endsWith('/' + f.id)) return true;
-        
-        // Filename match (last segment)
-        const fileSegments = f.id.split('/');
-        const idSegments = fileId.split('/');
-        return fileSegments[fileSegments.length - 1] === idSegments[idSegments.length - 1];
-      });
-      
-      // Use the original file ID from the open file if found, otherwise use the normalized ID
-      const localId = targetFile?.id || normId;
-      
       // Log the incoming change for debugging
       try {
-        console.log('[collab]', JSON.stringify({
-          event: 'receive-change',
+        console.log('[collab] Received content change:', {
           fileId,
-          normId,
+          contentLength: (content || '').length,
+          ts: typeof ts === 'number' ? ts : 'none',
+          fromPeer: peerId || 'unknown'
+        });
+      } catch (e) {
+        console.error('[collab] Error logging content change:', e);
+      }
+
+      // Apply the remote content immediately without any timestamp checks
+      // This ensures real-time updates for typing
+      try {
+        // Find the target file using multiple matching strategies
+        const targetFile = openFiles.find(f => {
+          if (!f.id) return false;
+          
+          // Exact match
+          if (f.id === fileId) return true;
+          
+          // Filename match (last segment)
+          const fileSegments = f.id.split('/');
+          const idSegments = fileId.split('/');
+          const fileBase = fileSegments[fileSegments.length - 1];
+          const idBase = idSegments[idSegments.length - 1];
+          
+          if (fileBase === idBase) return true;
+          
+          // Check if one is a suffix of the other
+          if (f.id.endsWith('/' + fileId) || fileId.endsWith('/' + f.id)) {
+            return true;
+          }
+          
+          return false;
+        });
+        
+        const localId = targetFile?.id || fileId;
+        
+        console.log('[collab] Applying remote content:', {
+          originalFileId: fileId,
           localId,
           hasTarget: !!targetFile,
-          contentLength: (content || '').length,
-          ts: typeof ts === 'number' ? ts : 'none'
-        }));
-      } catch {}
-
-      // Ignore if stale timestamp compared to what we've already applied
-      const lastTs = lastRemoteTsRef.current.get(normId) || 0;
-      const incomingTs = typeof ts === 'number' ? ts : 0;
-      
-      if (incomingTs && incomingTs < lastTs) {
-        try { 
-          console.log('[collab]', JSON.stringify({ 
-            event: 'ignore-change-stale', 
-            fileId: normId, 
-            incomingTs, 
-            lastTs,
-            delta: lastTs - incomingTs
-          })); 
-        } catch {}
-        return;
+          contentLength: (content || '').length
+        });
+        
+        // Apply the remote content
+        applyRemoteContent(localId, content || '');
+        
+        // Update the last timestamp for this file if we have one
+        if (ts) {
+          lastRemoteTsRef.current.set(localId, ts);
+        }
+      } catch (e) {
+        console.error('[collab] Error applying remote content:', e);
       }
-
-      // Prevent empty payload from wiping local non-empty content on join/sync
-      const existing = targetFile?.content ?? getTemplateContentById(localId) ?? "";
-      if ((content ?? "") === "" && existing.length > 0) {
-        try { 
-          console.log('[collab]', JSON.stringify({ 
-            event: 'ignore-change-empty', 
-            fileId: normId, 
-            existingLen: existing.length 
-          })); 
-        } catch {}
-        return;
-      }
-
-      // Ignore no-op content changes
-      if ((content ?? "") === existing) {
-        try { 
-          console.log('[collab]', JSON.stringify({ 
-            event: 'ignore-change-noop', 
-            fileId: normId, 
-            len: (content || '').length 
-          })); 
-        } catch {}
-        if (incomingTs) lastRemoteTsRef.current.set(normId, incomingTs);
-        return;
-      }
-
-      // Apply the content change
-      try { 
-        console.log('[collab]', JSON.stringify({ 
-          event: 'apply-remote-content', 
-          fileId: normId, 
-          localId, 
-          len: (content || '').length,
-          hasTarget: !!targetFile,
-          activeFileId: activeFileId,
-          isActive: localId === activeFileId || normId === activeFileId || 
-                   (activeFileId && (activeFileId.endsWith('/' + localId) || localId.endsWith('/' + activeFileId)))
-        })); 
-      } catch {}
-      
-      // Apply the remote content
-      applyRemoteContent(localId, content || "");
-      
-      // Update the last timestamp for this file
-      if (incomingTs) lastRemoteTsRef.current.set(normId, incomingTs);
     });
-  }, [onRemoteContentChange, openFiles, activeFileId]);
+  }, [onRemoteContentChange, openFiles, applyRemoteContent, socketId]);
 
   // Apply incoming remote save events to update content, clear unsaved badge, and sync template
   React.useEffect(() => {
